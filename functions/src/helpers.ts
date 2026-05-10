@@ -1,11 +1,14 @@
 import { getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
-import type { NightActionInput, PlayerDawnState, Side } from "folclore-game-engine";
+import type { NightActionInput, PlayerDawnState, Side, WinPlayerSnapshot } from "folclore-game-engine";
 import {
   NIGHT_ACTION_ORDER,
   ROLE_SIDE,
   resolveDawn,
   DAY_OPENING,
+  tallyExpulsionVotes,
+  checkCollectiveWin,
+  displayRoleName,
 } from "folclore-game-engine";
 import type { RoleId } from "folclore-game-engine";
 
@@ -61,7 +64,6 @@ export async function startNightSequence(roomCode: string, round: number) {
     players.filter((p) => p.alive !== false && !p.eliminated && !p.expelled).map((p) => p.id),
   );
   const order = nightRolesInPlay(secrets, alive);
-  const first = order[0] ?? null;
   await db
     .collection("rooms")
     .doc(roomCode)
@@ -70,8 +72,9 @@ export async function startNightSequence(roomCode: string, round: number) {
       phase: "night",
       round,
       nightPhaseIndex: 0,
-      currentActorRole: first,
+      currentActorRole: null,
       nightOrderRoles: order,
+      nightPendingRoles: order,
       saciActedThisNight: false,
     });
 }
@@ -80,6 +83,7 @@ export async function finalizeNight(roomCode: string, round: number) {
   const roomRef = db.collection("rooms").doc(roomCode);
   const roomSnap = await roomRef.get();
   const room = roomSnap.data() ?? {};
+  if (room.status !== "night") return;
   const geniHistory = (room.geniInvestigatedTargets as string[] | undefined) ?? [];
 
   const players = await loadPlayers(roomCode);
@@ -179,7 +183,9 @@ export async function finalizeNight(roomCode: string, round: number) {
     currentActorRole: null,
     nightPhaseIndex: 0,
     nightOrderRoles: [],
-    votingOpen: false,
+    nightPendingRoles: [],
+    votingOpen: true,
+    votesRound: round,
     saciActedLastNight: saciActed,
     individualWins: wins,
     geniInvestigatedTargets: [],
@@ -195,6 +201,119 @@ export async function finalizeNight(roomCode: string, round: number) {
   });
 
   await batch.commit();
+
+  // Auto-vote for bots now that day has started
+  const botIds = new Set(players.filter((p) => Boolean(p.isBot)).map((p) => p.id));
+  if (botIds.size > 0) {
+    const aliveNow = Object.values(res.players).filter((p) => p.alive && !p.eliminated && !p.expelled);
+    const aliveHumans = aliveNow.filter((p) => !botIds.has(p.id));
+    const botVotes: Record<string, string | null> = {};
+    for (const p of aliveNow) {
+      if (!botIds.has(p.id) || p.seduced || p.jailed) continue;
+      const targets = aliveHumans.filter((t) => t.id !== p.id);
+      botVotes[p.id] = targets.length > 0 ? targets[Math.floor(Math.random() * targets.length)].id : null;
+    }
+    if (Object.keys(botVotes).length > 0) {
+      await roomRef.collection("votes").doc(String(round)).set(
+        { ...botVotes, updatedAt: FieldValue.serverTimestamp() },
+        { merge: true },
+      );
+    }
+    // If all eligible voters are bots (all just voted), finalize day immediately
+    const eligible = aliveNow.filter((p) => !p.seduced && !p.jailed);
+    if (eligible.length > 0 && eligible.every((p) => botIds.has(p.id))) {
+      await finalizeDay(roomCode, round);
+    }
+  }
+}
+
+export async function finalizeDay(roomCode: string, round: number) {
+  const roomRef = db.collection("rooms").doc(roomCode);
+  const roomSnap = await roomRef.get();
+  const room = roomSnap.data() ?? {};
+  if (room.status !== "day" || room.votingOpen === false) return;
+
+  const players = await loadPlayers(roomCode);
+  const secrets = await loadSecrets(roomCode);
+
+  const voteSnap = await roomRef.collection("votes").doc(String(round)).get();
+  const votesRaw = voteSnap.data() ?? {};
+  const votes = Object.entries(votesRaw)
+    .filter(([k]) => k !== "updatedAt")
+    .map(([voterId, targetId]) => ({ voterId, targetId: (targetId as string) || null }));
+
+  const roleByPlayerId: Record<string, RoleId> = {};
+  for (const p of players) {
+    const s = secrets[p.id];
+    if (s) roleByPlayerId[p.id] = s.role;
+  }
+
+  const brasId = players.find((p) => secrets[p.id]?.role === "bras_cubas")?.id ?? null;
+  const tally = tallyExpulsionVotes(votes, {
+    doubleVotesOnBras: Boolean(room.saciActedLastNight),
+    brasPlayerId: brasId,
+    enchantedVoterIds: new Set(players.filter((p) => p.enchanted).map((p) => p.id)),
+    roleByPlayerId,
+  });
+
+  const batch = db.batch();
+  if (tally.expelledId) {
+    const expelled = players.find((p) => p.id === tally.expelledId)!;
+    const role = secrets[tally.expelledId]!.role;
+    batch.update(roomRef.collection("players").doc(tally.expelledId), { alive: false, expelled: true });
+    const msg =
+      role === "bras_cubas"
+        ? `Espera. ${expelled.name} sorri. Era o Tolo — e ser expulso era exatamente o que queria.`
+        : `${expelled.name} é expulso(a) da cidade. Era ${displayRoleName(role)}.`;
+    batch.set(roomRef.collection("publicLogEntries").doc(), {
+      round,
+      type: role === "bras_cubas" ? "special" : "expulsion",
+      message: msg,
+      timestamp: Date.now(),
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    batch.update(roomRef, {
+      votingOpen: false,
+      ...(role === "bras_cubas" ? { pendingBrasChoice: true } : {}),
+    });
+  } else {
+    batch.update(roomRef, { votingOpen: false });
+  }
+  await batch.commit();
+
+  if (!tally.expelledId || secrets[tally.expelledId]?.role === "bras_cubas") {
+    if (tally.expelledId) return; // bras_cubas waits for player choice
+    // No expulsion — advance to next night
+    const nextRound = round + 1;
+    await startNightSequence(roomCode, nextRound);
+    await processBotNightActions(roomCode, nextRound);
+    return;
+  }
+
+  // Someone expelled — check win condition
+  const snaps = await loadPlayers(roomCode);
+  const sec = await loadSecrets(roomCode);
+  const winPlayers: Record<string, WinPlayerSnapshot> = {};
+  for (const p of snaps) {
+    const r = sec[p.id]?.role;
+    if (!r) continue;
+    winPlayers[p.id] = {
+      id: p.id,
+      role: r,
+      alive: p.alive !== false,
+      eliminated: Boolean(p.eliminated),
+      expelled: Boolean(p.expelled),
+      individualObjectiveMet: Boolean(p.individualObjectiveMet),
+    };
+  }
+  const w = checkCollectiveWin(winPlayers, round, Number(room.maxRounds ?? 7));
+  if (w) {
+    await roomRef.update({ status: "ended", phase: "ended", winner: w, votingOpen: false });
+  } else {
+    const nextRound = round + 1;
+    await startNightSequence(roomCode, nextRound);
+    await processBotNightActions(roomCode, nextRound);
+  }
 }
 
 const BOT_ROLE_ACTIONS: Partial<Record<string, string>> = {
@@ -218,8 +337,8 @@ export async function processBotNightActions(roomCode: string, round: number): P
   const roomSnap = await roomRef.get();
   const room = roomSnap.data() ?? {};
 
-  const order = (room.nightOrderRoles as RoleId[]) ?? [];
-  let idx = Number(room.nightPhaseIndex ?? 0);
+  const pendingRoles = (room.nightPendingRoles as RoleId[]) ?? [];
+  if (pendingRoles.length === 0) return;
 
   const players = await loadPlayers(roomCode);
   const secrets = await loadSecrets(roomCode);
@@ -230,11 +349,17 @@ export async function processBotNightActions(roomCode: string, round: number): P
   const alive = players.filter((p) => p.alive !== false && !p.eliminated && !p.expelled);
   const eliminated = players.filter((p) => p.eliminated || p.expelled);
 
-  while (idx < order.length) {
-    const role = order[idx];
+  const nightRef = roomRef.collection("nightActions").doc(String(round));
+  const remainingPending: RoleId[] = [];
+  let saciActed = false;
+
+  for (const role of pendingRoles) {
     const actor = alive.find((p) => secrets[p.id]?.role === role);
 
-    if (!actor || !botIds.has(actor.id)) break;
+    if (!actor || !botIds.has(actor.id)) {
+      remainingPending.push(role);
+      continue;
+    }
 
     let targets = alive.filter((p) => p.id !== actor.id);
     if (role === "mae_de_santo") {
@@ -256,7 +381,6 @@ export async function processBotNightActions(roomCode: string, round: number): P
       specialAction,
     };
 
-    const nightRef = roomRef.collection("nightActions").doc(String(round));
     await nightRef.set(
       { [actor.id]: submission, updatedAt: FieldValue.serverTimestamp() },
       { merge: true },
@@ -269,17 +393,15 @@ export async function processBotNightActions(roomCode: string, round: number): P
         await roomRef.update({ geniInvestigatedTargets: [...prev, targetId] });
       }
     }
-    if (role === "saci") {
-      await roomRef.update({ saciActedThisNight: true });
-    }
-
-    idx++;
+    if (role === "saci") saciActed = true;
   }
 
-  if (idx >= order.length) {
+  if (saciActed) await roomRef.update({ saciActedThisNight: true });
+
+  if (remainingPending.length === 0) {
     await finalizeNight(roomCode, round);
   } else {
-    await roomRef.update({ nightPhaseIndex: idx, currentActorRole: order[idx] });
+    await roomRef.update({ nightPendingRoles: remainingPending });
   }
 }
 

@@ -5,13 +5,12 @@ import {
   dealRoles,
   maxRoundsForPlayerCount,
   validateNightAction,
-  tallyExpulsionVotes,
-  checkCollectiveWin,
   displayRoleName,
 } from "folclore-game-engine";
 import type { NightActionInput, RoleId } from "folclore-game-engine";
 import {
   db,
+  finalizeDay,
   finalizeNight,
   loadPlayers,
   loadSecrets,
@@ -205,9 +204,9 @@ export const submitNightAction = onCall(async (req) => {
   const mySecret = secrets[me.id];
   if (!mySecret) throw new HttpsError("failed-precondition", "Segredo ausente.");
 
-  const expectedRole = room.currentActorRole as RoleId | null;
-  if (!expectedRole || mySecret.role !== expectedRole) {
-    throw new HttpsError("failed-precondition", "Não é sua vez.");
+  const pendingRoles = (room.nightPendingRoles as RoleId[]) ?? [];
+  if (!pendingRoles.includes(mySecret.role)) {
+    throw new HttpsError("failed-precondition", "Você já agiu ou não tem ação esta noite.");
   }
 
   const submission: NightActionInput = {
@@ -220,7 +219,7 @@ export const submitNightAction = onCall(async (req) => {
   const v = validateNightAction(
     {
       round: Number(room.round ?? 1),
-      expectedRole,
+      expectedRole: mySecret.role,
       blockedNextNight: Boolean(me.blockedNextNight),
     },
     {
@@ -265,57 +264,16 @@ export const submitNightAction = onCall(async (req) => {
     await roomRef.update({ saciActedThisNight: true });
   }
 
-  const order = (room.nightOrderRoles as RoleId[]) ?? [];
-  let idx = Number(room.nightPhaseIndex ?? 0);
-  idx += 1;
-  const nextRole = order[idx] ?? null;
+  const newPending = pendingRoles.filter((r) => r !== mySecret.role);
 
-  if (!nextRole) {
+  if (newPending.length === 0) {
     await finalizeNight(code, round);
     return { advanced: true, dawn: true };
   }
 
-  await roomRef.update({ nightPhaseIndex: idx, currentActorRole: nextRole });
+  await roomRef.update({ nightPendingRoles: newPending });
   await processBotNightActions(code, round);
-  return { advanced: true, currentActorRole: nextRole };
-});
-
-export const openVoting = onCall(async (req) => {
-  const uid = requireAuth(req);
-  const code = String(req.data?.roomCode ?? "").toUpperCase().trim();
-  const roomRef = db.collection("rooms").doc(code);
-  const roomSnap = await roomRef.get();
-  if (!roomSnap.exists) throw new HttpsError("not-found", "Sala não encontrada.");
-  const room = roomSnap.data()!;
-  const players = await loadPlayers(code);
-  const me = players.find((p) => p.uid === uid);
-  if (!me || me.id !== room.spokespersonId) throw new HttpsError("permission-denied", "Apenas o porta-voz.");
-
-  const round = Number(room.round ?? 1);
-  await roomRef.update({ votingOpen: true, votesRound: round });
-
-  // Auto-vote for any bot players
-  const botIds = new Set(players.filter((p) => Boolean(p.isBot)).map((p) => p.id));
-  if (botIds.size > 0) {
-    const alive = players.filter((p) => p.alive !== false && !p.eliminated && !p.expelled);
-    const aliveHumans = alive.filter((p) => !botIds.has(p.id));
-    const botVotes: Record<string, string | null> = {};
-    for (const p of alive) {
-      if (!botIds.has(p.id) || p.seduced || p.jailed) continue;
-      const targets = aliveHumans.filter((t) => t.id !== p.id);
-      botVotes[p.id] = targets.length > 0
-        ? targets[Math.floor(Math.random() * targets.length)].id
-        : null;
-    }
-    if (Object.keys(botVotes).length > 0) {
-      await roomRef.collection("votes").doc(String(round)).set(
-        { ...botVotes, updatedAt: FieldValue.serverTimestamp() },
-        { merge: true },
-      );
-    }
-  }
-
-  return { ok: true };
+  return { advanced: true };
 });
 
 export const submitVote = onCall(async (req) => {
@@ -326,118 +284,30 @@ export const submitVote = onCall(async (req) => {
   const roomSnap = await roomRef.get();
   if (!roomSnap.exists) throw new HttpsError("not-found", "Sala não encontrada.");
   const room = roomSnap.data()!;
-  if (room.status !== "day" || !room.votingOpen) {
-    throw new HttpsError("failed-precondition", "Votação fechada.");
-  }
+  if (room.status !== "day") throw new HttpsError("failed-precondition", "Não é fase do dia.");
 
   const players = await loadPlayers(code);
-  const secrets = await loadSecrets(code);
   const me = players.find((p) => p.uid === uid);
   if (!me) throw new HttpsError("permission-denied", "Jogador não encontrado.");
   if (me.seduced || me.jailed || me.alive === false) throw new HttpsError("failed-precondition", "Sem direito a voto.");
 
   const round = Number(room.votesRound ?? room.round ?? 1);
   await roomRef.collection("votes").doc(String(round)).set(
-    {
-      [me.id]: targetId,
-      updatedAt: FieldValue.serverTimestamp(),
-    },
+    { [me.id]: targetId, updatedAt: FieldValue.serverTimestamp() },
     { merge: true },
   );
-  return { ok: true };
-});
 
-export const closeVoting = onCall(async (req) => {
-  const uid = requireAuth(req);
-  const code = String(req.data?.roomCode ?? "").toUpperCase().trim();
-  const roomRef = db.collection("rooms").doc(code);
-  const roomSnap = await roomRef.get();
-  if (!roomSnap.exists) throw new HttpsError("not-found", "Sala não encontrada.");
-  const room = roomSnap.data()!;
-  const players = await loadPlayers(code);
-  const me = players.find((p) => p.uid === uid);
-  if (!me || me.id !== room.spokespersonId) throw new HttpsError("permission-denied", "Apenas o porta-voz.");
-
-  const round = Number(room.votesRound ?? room.round ?? 1);
+  // Check if all eligible voters have now voted
   const voteSnap = await roomRef.collection("votes").doc(String(round)).get();
-  const votesRaw = voteSnap.data() ?? {};
-  const votes = Object.entries(votesRaw)
-    .filter(([k]) => k !== "updatedAt")
-    .map(([voterId, targetId]) => ({ voterId, targetId: (targetId as string) || null }));
-
-  const secrets = await loadSecrets(code);
-  const roleByPlayerId: Record<string, RoleId> = {};
-  for (const p of players) {
-    const s = secrets[p.id];
-    if (s) roleByPlayerId[p.id] = s.role;
+  const currentVotes = voteSnap.data() ?? {};
+  const eligible = players.filter(
+    (p) => p.alive !== false && !p.eliminated && !p.expelled && !p.seduced && !p.jailed,
+  );
+  if (eligible.length > 0 && eligible.every((p) => p.id in currentVotes)) {
+    await finalizeDay(code, round);
   }
 
-  const brasId = players.find((p) => secrets[p.id]?.role === "bras_cubas")?.id ?? null;
-  const tally = tallyExpulsionVotes(votes, {
-    doubleVotesOnBras: Boolean(room.saciActedLastNight),
-    brasPlayerId: brasId,
-    enchantedVoterIds: new Set(players.filter((p) => p.enchanted).map((p) => p.id)),
-    roleByPlayerId,
-  });
-
-  const batch = db.batch();
-  if (tally.expelledId) {
-    const ref = roomRef.collection("players").doc(tally.expelledId);
-    const expelled = players.find((p) => p.id === tally.expelledId)!;
-    const role = secrets[tally.expelledId]!.role;
-    batch.update(ref, { alive: false, expelled: true });
-    const msgType = role === "bras_cubas" ? "special" : "expulsion";
-    const msg =
-      role === "bras_cubas"
-        ? `Espera. ${expelled.name} sorri. Era o Tolo — e ser expulso era exatamente o que queria.`
-        : `${expelled.name} é expulso(a) da cidade. Era ${displayRoleName(role)}.`;
-
-    const logRef = roomRef.collection("publicLogEntries").doc();
-    batch.set(logRef, {
-      round,
-      type: msgType,
-      message: msg,
-      timestamp: Date.now(),
-      createdAt: FieldValue.serverTimestamp(),
-    });
-
-    if (role === "bras_cubas") {
-      batch.update(roomRef, { pendingBrasChoice: true, votingOpen: false });
-    } else {
-      batch.update(roomRef, { votingOpen: false });
-    }
-  } else {
-    batch.update(roomRef, { votingOpen: false });
-  }
-
-  await batch.commit();
-
-  if (tally.expelledId && secrets[tally.expelledId]?.role !== "bras_cubas") {
-    const snaps = await loadPlayers(code);
-    const sec = await loadSecrets(code);
-    const winPlayers: Record<string, import("folclore-game-engine").WinPlayerSnapshot> = {};
-    for (const p of snaps) {
-      const r = sec[p.id]?.role;
-      if (!r) continue;
-      winPlayers[p.id] = {
-        id: p.id,
-        role: r,
-        alive: p.alive !== false,
-        eliminated: Boolean(p.eliminated),
-        expelled: Boolean(p.expelled),
-        individualObjectiveMet: Boolean(p.individualObjectiveMet),
-      };
-    }
-    const w = checkCollectiveWin(winPlayers, round, Number(room.maxRounds ?? 7));
-    if (w) {
-      await roomRef.update({ status: "ended", phase: "ended", winner: w, votingOpen: false });
-    } else {
-      const nextRound = round + 1;
-      await startNightSequence(code, nextRound);
-    }
-  }
-
-  return { expelledId: tally.expelledId, counts: tally.counts };
+  return { ok: true };
 });
 
 export const sendChatMessage = onCall(async (req) => {
@@ -490,6 +360,7 @@ export const brasContinueChoice = onCall(async (req) => {
     await roomRef.update({ pendingBrasChoice: false, votingOpen: false });
     const r = Number(roomSnap.data()!.round ?? 1) + 1;
     await startNightSequence(code, r);
+    await processBotNightActions(code, r);
   }
   return { ok: true };
 });
@@ -693,5 +564,69 @@ export const markSaciGorroOffer = onCall(async (req) => {
   const me = players.find((p) => p.uid === uid);
   if (!me || secrets[me.id]?.role !== "saci") throw new HttpsError("permission-denied", "Apenas Saci.");
   await roomRef.update({ pendingSaciGorro: true });
+  return { ok: true };
+});
+
+export const restartGame = onCall(async (req) => {
+  const uid = requireAuth(req);
+  const code = String(req.data?.roomCode ?? "").toUpperCase().trim();
+  if (!code) throw new HttpsError("invalid-argument", "Código inválido.");
+
+  const roomRef = db.collection("rooms").doc(code);
+  const roomSnap = await roomRef.get();
+  if (!roomSnap.exists) throw new HttpsError("not-found", "Sala não encontrada.");
+  const room = roomSnap.data()!;
+  if (room.hostUid !== uid) throw new HttpsError("permission-denied", "Apenas o anfitrião pode recomeçar.");
+  if (room.status !== "ended") throw new HttpsError("failed-precondition", "O jogo ainda não encerrou.");
+
+  await db.recursiveDelete(roomRef.collection("secrets"));
+  await db.recursiveDelete(roomRef.collection("nightActions"));
+  await db.recursiveDelete(roomRef.collection("votes"));
+  await db.recursiveDelete(roomRef.collection("publicLogEntries"));
+  await db.recursiveDelete(roomRef.collection("privateLog"));
+  await db.recursiveDelete(roomRef.collection("chat"));
+
+  const players = await loadPlayers(code);
+  const batch = db.batch();
+  for (const p of players) {
+    batch.update(roomRef.collection("players").doc(p.id), {
+      alive: true,
+      eliminated: false,
+      expelled: false,
+      blockedNextNight: false,
+      silenced: false,
+      silencedRounds: 0,
+      enchanted: false,
+      seduced: false,
+      jailed: false,
+      protected: false,
+      invoked: false,
+      doctorLastTargetId: null,
+      wolfBiteUsed: false,
+      individualObjectiveMet: false,
+      isSpokesperson: false,
+    });
+  }
+
+  batch.update(roomRef, {
+    status: "lobby",
+    phase: "lobby",
+    round: 0,
+    winner: null,
+    individualWins: [],
+    spokespersonId: null,
+    nightPhaseIndex: 0,
+    currentActorRole: null,
+    nightOrderRoles: [],
+    nightPendingRoles: [],
+    votingOpen: false,
+    saciActedLastNight: false,
+    saciActedThisNight: false,
+    geniInvestigatedTargets: [],
+    pendingBrasChoice: false,
+    pendingSaciGorro: false,
+  });
+
+  await batch.commit();
   return { ok: true };
 });

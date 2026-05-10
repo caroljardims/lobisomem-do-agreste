@@ -1,4 +1,4 @@
-# CLAUDE.md — Folclore Oculto (nome TBD)
+# CLAUDE.md — Lobisomem do Sertão
 
 Sistema de party game remoto baseado em turnos. Jogadores acessam via browser no celular. Cada jogador tem tela individual e privada. O sistema processa todas as ações — o porta-voz apenas lê os textos em voz alta.
 
@@ -6,10 +6,12 @@ Sistema de party game remoto baseado em turnos. Jogadores acessam via browser no
 
 ## Stack
 
-- **Frontend:** a decidir (componentes descritos de forma agnóstica)
-- **Backend:** Firebase — Realtime Database ou Firestore
+- **Frontend:** React + TypeScript + Vite — hospedado no Firebase Hosting (`apps/web`)
+- **Backend:** Firebase Cloud Functions v2 (Admin SDK, TypeScript → esbuild → `lib/index.js`) + Firestore (`functions/`)
+- **Engine:** pacote `folclore-game-engine` (local, `node_modules/`) — lógica de resolução de amanhecer, condições de vitória, ordem noturna
 - **Acesso:** web app no browser, responsivo para mobile
 - **Sincronização:** baseada em turnos — o sistema avança quando todos os jogadores ativos da fase concluíram suas ações
+- **Bots:** jogadores artificiais (`isBot: true`) que agem automaticamente na noite e votam no dia
 
 ---
 
@@ -19,26 +21,34 @@ Sistema de party game remoto baseado em turnos. Jogadores acessam via browser no
 
 ```
 {
-  code: string,                  // código de 4-6 caracteres
-  status: 'lobby' | 'night' | 'dawn' | 'day' | 'ended',
+  code: string,                  // código de 4 caracteres
+  status: 'lobby' | 'night' | 'day' | 'ended',
+  phase: string,                 // espelha status (usado pelo frontend)
   round: number,                 // rodada atual (começa em 1)
-  phase: string,                 // fase noturna atual (ex: 'lobisomem', 'saci', 'geni'...)
   maxRounds: number,             // lua cheia — definido pela composição
-  spokespersonId: string,        // playerId do porta-voz (único leitor-aloud; mesmo jogador tem personagem)
-  nightPhaseIndex: number,       // índice na fila de papéis ativos da noite (0-based; motor avança)
-  currentActorRole: string | null, // papel cuja ação está pendente, ou null entre etapas / fora da noite
+  hostUid: string,               // Firebase Auth uid do anfitrião
+  spokespersonId: string,        // playerId do porta-voz
+  expectedPlayerCount: number,   // vagas planejadas (lobby)
+  nightPhaseIndex: number,       // índice na fila de papéis ativos da noite (0-based)
+  currentActorRole: string | null, // papel cuja ação está pendente, ou null
+  nightOrderRoles: RoleId[],     // ordem completa de papéis da noite (calculada no início)
+  nightPendingRoles: RoleId[],   // papéis ainda não resolvidos nessa noite
+  votingOpen: boolean,           // true durante todo o dia; false após finalizeDay()
+  votesRound: number,            // rodada cujos votos estão sendo coletados
+  saciActedThisNight: boolean,   // Saci agiu nessa noite (para dobrar votos em Brás Cubas)
+  saciActedLastNight: boolean,   // Saci agiu na noite anterior (aplicado ao dia atual)
+  geniInvestigatedTargets: string[], // IDs investigados pela Geni nessa noite (acumulados)
+  pendingBrasChoice: boolean,    // Brás Cubas foi expulso e precisa escolher
   individualWins: [              // vitórias individuais registradas; não encerram a partida
     {
       playerId: string,
-      role: string,              // personagem que conquistou
-      type: string,              // ex: 'mula_padre' | 'iara_delegado' | 'cangaceiro_iara' | ...
+      role: string,
+      type: string,
       round: number,
       timestamp: timestamp
     }
   ],
   winner: null | 'moradores' | 'criaturas' | playerId,
-  hostUid: string,               // Firebase Auth uid do anfitrião
-  expectedPlayerCount: number,   // vagas planejadas (lobby)
   createdAt: timestamp
 }
 ```
@@ -128,15 +138,21 @@ Em implementações Firestore, preferir **subcoleções** para `publicLog` / `pr
 ## Fluxo geral da partida
 
 ```
-1. Anfitrião cria sala → gera código
+1. Anfitrião cria sala → gera código de 4 caracteres
 2. Jogadores entram com o código e escolhem nome
 3. Anfitrião inicia o jogo → sistema sorteia personagens e porta-voz
 4. Loop de rodadas:
-   a. Fase da noite — sistema chama personagens em ordem
-   b. Amanhecer — sistema resolve ações e publica log público
-   c. Fase do dia — discussão + votação
-   d. Verificação de condições de vitória
+   a. Fase da noite — sistema chama personagens em ordem (nightPendingRoles)
+      - Cada jogador vê descrição da ação do seu personagem enquanto espera/age
+      - Bots agem automaticamente via processBotNightActions()
+   b. Amanhecer — sistema resolve ações via resolveDawn() e publica log público
+      - Panorama visível a todos: mortes, aterrorizações, invocações, etc.
+   c. Fase do dia — discussão + votação (sempre aberta)
+      - Bots votam automaticamente no início do dia
+      - Dia encerra quando todos os elegíveis votaram → finalizeDay()
+   d. Verificação de condições de vitória → checkCollectiveWin()
 5. Fim de jogo — sistema anuncia vencedor
+   - Anfitrião pode reiniciar: botão "Recomeçar" reseta subcoleções e estado dos jogadores
 ```
 
 ---
@@ -361,14 +377,16 @@ O Coronel tem botão de "Acusação Formal" disponível durante o dia. Ao aciona
 
 ### Votação de expulsão
 
-Ao fim da discussão, porta-voz encerra o debate e sistema abre votação.
+A votação fica **sempre aberta** durante toda a fase do dia — não há botão de abrir/encerrar. O dia encerra automaticamente quando todos os jogadores elegíveis votaram.
 
 - Cada jogador seleciona um alvo (ou voto nulo)
-- Jogadores sem direito a voto não veem a interface de votação
+- Jogadores sem direito a voto (`seduced`, `jailed`, mortos/expulsos) não veem a interface de votação
 - Jogadores `enchanted` não podem selecionar criaturas como alvo
 - **Aliança involuntária Saci/Brás Cubas:** se o Saci agiu nessa noite, qualquer voto em Brás Cubas conta como dois — sistema aplica silenciosamente
+- Quando todos os elegíveis votaram: sistema chama `finalizeDay()` automaticamente
+- `finalizeDay()` tem guarda de idempotência: `if (status !== "day" || votingOpen === false) return`
 - Maioria simples define o expulso
-- Empate: sem expulsão nessa rodada
+- Empate: sem expulsão nessa rodada → sistema avança para a próxima noite
 
 ### Expulsão
 
@@ -452,3 +470,52 @@ Sistema verifica após cada amanhecer e após cada expulsão:
 - Ações de uso único são bloqueadas pelo sistema após o primeiro uso — o jogador não vê mais a opção
 - Jogadores eliminados à noite ou expulsos por votação têm `alive: false` — não agem, não votam, não aparecem como alvos disponíveis (exceto para a Mãe de Santo)
 - Jogadores invocados pela Mãe de Santo são exceção temporária — `invoked: true` reativa participação por uma rodada
+
+---
+
+## Arquitetura de implementação
+
+### Cloud Functions (`functions/src/`)
+
+| Arquivo | Responsabilidade |
+|---|---|
+| `index.ts` | Exports de todas as `onCall` functions |
+| `helpers.ts` | Lógica compartilhada: `loadPlayers`, `loadSecrets`, `startNightSequence`, `finalizeNight`, `finalizeDay`, `processBotNightActions` |
+
+**Funções principais:**
+
+- `startGame` — sorteia personagens, porta-voz, inicia noite 1; executa bots se presentes
+- `submitNightAction` — registra ação noturna; avança `nightPendingRoles`; chama `finalizeNight` se vazio
+- `submitVote` — registra voto; se todos elegíveis votaram → chama `finalizeDay`
+- `finalizeNight` — resolve `resolveDawn()`, aplica resultados, muda `status` para `"day"`, vota bots automaticamente
+- `finalizeDay` — tally de votos, processa expulsão, verifica vitória ou avança para próxima noite
+- `restartGame` — (host only, status `"ended"`) deleta subcoleções via `db.recursiveDelete()`, reseta jogadores e sala para lobby
+- `processBotNightActions` — bots escolhem alvos aleatórios e submetem ações noturnas; se todos pending são bots → chama `finalizeNight`
+
+### UX do frontend (`apps/web/src/App.tsx`)
+
+**Fase da noite:**
+- Jogador vê descrição textual do que seu personagem está fazendo enquanto age (ex: *"O Lobisomem está à espreita…"*)
+- Após confirmar ação, volta à tela de espera
+
+**Transição noite → dia:**
+- Panorama visível a todos: lista de eventos da noite atual (`type: death | bite | terror | invocation | dawn | special` com `round === currentRound`)
+
+**Fase do dia:**
+- Campo de voto sempre exibido para jogadores elegíveis (alive, não seduced, não jailed)
+- Jogadores inelegíveis veem mensagem de aviso
+- Não há botões de "abrir" ou "encerrar" votação — o processo é automático
+
+**Fim de jogo:**
+- Anfitrião vê botão "Recomeçar" → chama `restartGame` → sala volta ao lobby com os mesmos jogadores
+
+
+# To Do
+- Remover do dia as interações que não podem ser executadas pelo player. Ex.: Se eu sou o Coronel, não posso executar Tiro Certo do cangaceiro.
+- Cuidar espaçamento entre os componentes.
+- Em "O que aconteceu esta noite":
+    - Está duplicado para o anfitrião, remover o componente de baixo, permanecer apenas em cima. 
+    - Deve ter um parecer geral do que acontecer somente noite passada. Se ninguém foi eliminado, deve se dizer "ninguém foi eliminado" e assim por diante. Além disso, quem já foi eliminado, expulso ou morto. Isso deve aparecer para todos os players, não apenas ao porta-voz.
+- Personagem que foi expulso ou morreu não pode mais usar o chat. Nesse ponto, ele só pode assistir o jogo acontecendo naturalmente.
+- Personagem que foi expulso não pode voltar à cidade. Personagem que foi morto pode voltar somente quando a mãe de santo chamar, por uma rodada. Nesse caso, ele pode falar tudo o que sabe no chat.
+- Bots podem fazer parte do jogo e podem ser interativos no chat também (com cautela).

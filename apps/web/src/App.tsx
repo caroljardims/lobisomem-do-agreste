@@ -29,6 +29,7 @@ type RoomDoc = DocumentData & {
   round?: number;
   spokespersonId?: string;
   currentActorRole?: string | null;
+  nightPendingRoles?: string[];
   votingOpen?: boolean;
   pendingBrasChoice?: boolean;
   winner?: string | null;
@@ -39,7 +40,13 @@ type PlayerDoc = DocumentData & {
   name?: string;
   uid?: string;
   alive?: boolean;
+  eliminated?: boolean;
+  expelled?: boolean;
   isSpokesperson?: boolean;
+  isBot?: boolean;
+  wolfBiteUsed?: boolean;
+  seduced?: boolean;
+  jailed?: boolean;
 };
 
 export function App() {
@@ -53,12 +60,13 @@ export function App() {
   const [room, setRoom] = useState<RoomDoc | null>(null);
   const [players, setPlayers] = useState<PlayerDoc[]>([]);
   const [myRole, setMyRole] = useState<string | null>(null);
-  const [publicLog, setPublicLog] = useState<{ id: string; message?: string }[]>([]);
+  const [publicLog, setPublicLog] = useState<{ id: string; message?: string; round?: number; type?: string }[]>([]);
   const [chat, setChat] = useState<{ id: string; name?: string; text?: string }[]>([]);
   const [chatText, setChatText] = useState("");
   const [voteTarget, setVoteTarget] = useState<string>("");
   const [nightTarget, setNightTarget] = useState<string>("");
   const [nightAction, setNightAction] = useState("eliminate");
+  const [nightSpecialAction, setNightSpecialAction] = useState<string | null>(null);
 
   // Entry flow
   const [view, setView] = useState<View>("intro");
@@ -232,29 +240,59 @@ export function App() {
       roomCode,
       action: nightAction,
       targetId: nightTarget || null,
-      specialAction: null,
+      specialAction: nightSpecialAction,
     });
 
-  const defaultNightAction = useMemo(() => {
+  const ROLE_NIGHT_DESCRIPTION: Record<string, string> = {
+    lobisomem:    "Você sai para caçar. Escolha um alvo para eliminar — ou use a mordida para converter (uso único).",
+    saci:         "Você rouba a habilidade de alguém esta noite, bloqueando sua ação na próxima.",
+    mula:         "Você aterroriza alguém para silenciá-lo durante o dia.",
+    boto:         "Você enfeitiça alguém para que não possa votar contra as criaturas.",
+    iara:         "Você seduz alguém para roubar seu voto — ou usa a Voz Encantadora para eliminá-lo (uso único).",
+    curupira:     "Você protege alguém das criaturas esta noite.",
+    doutor:       "Você salva alguém de ser eliminado. Não pode repetir o mesmo alvo da noite anterior.",
+    mae_de_santo: "Você invoca um jogador já eliminado para retornar por mais um dia.",
+    geni:         "Você conversa com alguém e o sistema revela: morador ou criatura.",
+    boitata:      "Você investiga alguém para descobrir seu lado.",
+    cartomante:   "Você lê o destino de alguém para revelar se é morador ou criatura.",
+    delegado:     "Você prende alguém — ele perde o voto no próximo dia e você descobre seu lado.",
+    cangaceiro:   "Você consulta se a Geni já investigou seu alvo, preparando o Tiro Certo para o dia.",
+  };
+
+  const roleActionOptions = useMemo(() => {
     const r = myRole ?? "";
-    if (r === "lobisomem") return "eliminate";
-    if (r === "doutor") return "save";
-    if (r === "curupira") return "protect";
-    if (r === "cartomante" || r === "boitata") return "investigate";
-    if (r === "delegado") return "jail";
-    if (r === "geni") return "converse";
-    if (r === "cangaceiro") return "query";
-    if (r === "saci") return "steal";
-    if (r === "mula") return "terrorize";
-    if (r === "boto") return "enchant";
-    if (r === "iara") return "seduce";
-    if (r === "mae_de_santo") return "invoke";
-    return "eliminate";
-  }, [myRole]);
+    const me = players.find((p) => p.id === playerId);
+    if (r === "lobisomem") {
+      const opts = [{ value: "eliminate", label: "eliminar" }];
+      if (!me?.wolfBiteUsed) opts.push({ value: "bite", label: "morder (uso único)" });
+      return opts;
+    }
+    if (r === "iara") return [
+      { value: "seduce", label: "seduzir" },
+      { value: "eliminate_special", label: "Voz Encantadora (uso único)" },
+    ];
+    const single: Record<string, { value: string; label: string }> = {
+      saci:       { value: "steal",       label: "roubar habilidade" },
+      mula:       { value: "terrorize",   label: "aterrorizar" },
+      boto:       { value: "enchant",     label: "enfeitiçar" },
+      curupira:   { value: "protect",     label: "proteger" },
+      doutor:     { value: "save",        label: "salvar" },
+      mae_de_santo: { value: "invoke",    label: "invocar" },
+      geni:       { value: "converse",    label: "conversar" },
+      boitata:    { value: "investigate", label: "investigar" },
+      cartomante: { value: "investigate", label: "investigar" },
+      delegado:   { value: "jail",        label: "prender" },
+      cangaceiro: { value: "query",       label: "consultar" },
+    };
+    if (single[r]) return [single[r]];
+    return [];
+  }, [myRole, players, playerId]);
 
   useEffect(() => {
-    setNightAction(defaultNightAction);
-  }, [defaultNightAction, room?.currentActorRole]);
+    setNightAction(roleActionOptions[0]?.value ?? "eliminate");
+    setNightTarget("");
+    setNightSpecialAction(null);
+  }, [myRole, room?.round]);
 
   // ── Shared UI fragments ──
 
@@ -745,57 +783,83 @@ export function App() {
           </p>
           {myRole && <p className="muted">Seu personagem: {myRole}</p>}
 
-          {room.status === "night" && (
-            <div>
-              <p className="muted">Vez: {room.currentActorRole ?? "—"}</p>
-              {room.currentActorRole && myRole === room.currentActorRole && (
-                <>
-                  <label>Ação</label>
-                  <select
-                    value={nightAction}
-                    onChange={(e) => setNightAction(e.target.value)}
-                  >
-                    <option value="eliminate">eliminar (Lobisomem)</option>
-                    <option value="bite">morder (Lobisomem)</option>
-                    <option value="save">salvar (Doutor)</option>
-                    <option value="protect">proteger (Curupira)</option>
-                    <option value="investigate">investigar</option>
-                    <option value="steal">roubar (Saci)</option>
-                    <option value="terrorize">aterrorizar (Mula)</option>
-                    <option value="enchant">enfeitiçar (Boto)</option>
-                    <option value="seduce">seduzir (Iara)</option>
-                    <option value="eliminate_special">
-                      Voz Encantadora (Iara)
-                    </option>
-                    <option value="jail">prender (Delegado)</option>
-                    <option value="invoke">invocar (Mãe)</option>
-                    <option value="converse">conversar (Geni)</option>
-                    <option value="query">consultar (Cangaceiro)</option>
-                  </select>
-                  <label>Alvo</label>
-                  <select
-                    value={nightTarget}
-                    onChange={(e) => setNightTarget(e.target.value)}
-                  >
-                    <option value="">—</option>
-                    {players
-                      .filter((p) => p.id !== playerId && p.alive !== false)
-                      .map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
-                        </option>
+          {room.status === "night" && (() => {
+            const myRoleIsPending = !!(myRole && room.nightPendingRoles?.includes(myRole));
+            const needsAlignment = (myRole === "curupira" || myRole === "boitata") && room.round === 1;
+            const targetPool = myRole === "mae_de_santo"
+              ? players.filter((p) => p.eliminated || p.expelled)
+              : players.filter((p) => p.id !== playerId && p.alive !== false && !p.eliminated && !p.expelled);
+            const canSubmit = !loading && !!nightTarget && (!needsAlignment || !!nightSpecialAction);
+
+            return (
+              <div>
+                {myRoleIsPending ? (
+                  <>
+                    {myRole && ROLE_NIGHT_DESCRIPTION[myRole] && (
+                      <p className="muted" style={{ marginBottom: "0.5rem" }}>
+                        {ROLE_NIGHT_DESCRIPTION[myRole]}
+                      </p>
+                    )}
+                    {roleActionOptions.length > 1 && (
+                      <>
+                        <label>Ação</label>
+                        <select value={nightAction} onChange={(e) => setNightAction(e.target.value)}>
+                          {roleActionOptions.map((o) => (
+                            <option key={o.value} value={o.value}>{o.label}</option>
+                          ))}
+                        </select>
+                      </>
+                    )}
+                    {needsAlignment && (
+                      <>
+                        <label>Seu alinhamento (rodada 1)</label>
+                        <select value={nightSpecialAction ?? ""} onChange={(e) => setNightSpecialAction(e.target.value)}>
+                          <option value="">escolha um lado…</option>
+                          <option value="moradores">moradores</option>
+                          <option value="criaturas">criaturas</option>
+                        </select>
+                      </>
+                    )}
+                    <label>Alvo</label>
+                    <select value={nightTarget} onChange={(e) => setNightTarget(e.target.value)}>
+                      <option value="">—</option>
+                      {targetPool.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
                       ))}
-                  </select>
-                  <button type="button" onClick={submitNight}>
-                    Enviar ação
-                  </button>
-                </>
-              )}
-            </div>
-          )}
+                    </select>
+                    <button type="button" disabled={!canSubmit} onClick={submitNight}>
+                      Enviar ação
+                    </button>
+                  </>
+                ) : (
+                  <p className="muted">
+                    {myRole && !["coronel", "padre", "aldeao", "bras_cubas"].includes(myRole)
+                      ? "Ação enviada. Aguardando os outros…"
+                      : "Você não tem ação noturna. Aguarde o amanhecer."}
+                  </p>
+                )}
+              </div>
+            );
+          })()}
 
           {room.status === "day" && (
             <div>
+              {(() => {
+                const currentRound = room.round ?? 1;
+                const nightTypes = ["death", "bite", "terror", "invocation", "dawn", "special"];
+                const dawnEntries = publicLog.filter(
+                  (e) => e.round === currentRound && nightTypes.includes(e.type ?? ""),
+                );
+                if (dawnEntries.length === 0) return null;
+                return (
+                  <div className="game-card log-card" style={{ marginBottom: "0.75rem" }}>
+                    <strong>O que aconteceu esta noite</strong>
+                    {dawnEntries.map((e) => (
+                      <p key={e.id}>{e.message}</p>
+                    ))}
+                  </div>
+                );
+              })()}
               <div className="game-card log-card">
                 <strong>Chat</strong>
                 {chat.map((m) => (
@@ -822,51 +886,54 @@ export function App() {
                   Enviar
                 </button>
               </div>
-              {isSpokesperson && (
-                <div className="row" style={{ marginTop: "0.75rem" }}>
-                  <button
-                    type="button"
-                    onClick={() => run("openVoting", { roomCode })}
-                  >
-                    Abrir votação
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => run("closeVoting", { roomCode })}
-                  >
-                    Encerrar votação
-                  </button>
-                </div>
-              )}
-              {room.votingOpen && (
-                <div style={{ marginTop: "0.75rem" }}>
-                  <label>Seu voto</label>
-                  <select
-                    value={voteTarget}
-                    onChange={(e) => setVoteTarget(e.target.value)}
-                  >
-                    <option value="">Nulo</option>
-                    {players
-                      .filter((p) => p.id !== playerId && p.alive !== false)
-                      .map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
-                        </option>
-                      ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      run("submitVote", {
-                        roomCode,
-                        targetId: voteTarget || null,
-                      })
-                    }
-                  >
-                    Votar
-                  </button>
-                </div>
-              )}
+              {(() => {
+                const myPlayer = players.find((p) => p.id === playerId);
+                const canVote =
+                  myPlayer?.alive !== false &&
+                  !myPlayer?.eliminated &&
+                  !myPlayer?.expelled &&
+                  !myPlayer?.seduced &&
+                  !myPlayer?.jailed;
+                if (!canVote)
+                  return (
+                    <p className="muted" style={{ marginTop: "0.75rem" }}>
+                      Você não tem direito a voto nesta rodada.
+                    </p>
+                  );
+                return (
+                  <div style={{ marginTop: "0.75rem" }}>
+                    <label>Seu voto</label>
+                    <select
+                      value={voteTarget}
+                      onChange={(e) => setVoteTarget(e.target.value)}
+                    >
+                      <option value="">Nulo</option>
+                      {players
+                        .filter(
+                          (p) =>
+                            p.id !== playerId &&
+                            p.alive !== false &&
+                            !p.eliminated &&
+                            !p.expelled,
+                        )
+                        .map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))}
+                    </select>
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={() =>
+                        run("submitVote", { roomCode, targetId: voteTarget || null })
+                      }
+                    >
+                      Votar
+                    </button>
+                  </div>
+                );
+              })()}
               <div className="row" style={{ marginTop: "0.75rem" }}>
                 <button
                   type="button"
@@ -954,6 +1021,21 @@ export function App() {
         <div className="game-card ended-card">
           <p className="ended-label">Fim de jogo</p>
           <p className="ended-winner">Vencedor: {String(room.winner)}</p>
+          {isHost && (
+            <button
+              type="button"
+              className="primary-btn"
+              disabled={loading}
+              style={{ marginTop: "1rem" }}
+              onClick={() => run("restartGame", { roomCode })}
+            >
+              <div className="btn-stack">
+                <span className="btn-title">{loading ? "reiniciando…" : "Recomeçar"}</span>
+                <span className="btn-sub">volta ao lobby com os mesmos jogadores</span>
+              </div>
+              <span className="btn-arrow" aria-hidden>→</span>
+            </button>
+          )}
         </div>
       )}
 
