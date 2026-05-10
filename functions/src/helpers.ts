@@ -8,7 +8,6 @@ import {
   DAY_OPENING,
   tallyExpulsionVotes,
   checkCollectiveWin,
-  displayRoleName,
 } from "folclore-game-engine";
 import type { RoleId } from "folclore-game-engine";
 
@@ -237,7 +236,9 @@ export async function finalizeNight(roomCode: string, round: number) {
     const botVotes: Record<string, string | null> = {};
     for (const p of aliveNow) {
       if (!botIds.has(p.id) || p.seduced || p.jailed) continue;
-      const targets = aliveHumans.filter((t) => t.id !== p.id);
+      // When humans are present, bots vote randomly among all alive players (including other bots)
+      // When only bots remain, bots vote null (triggers Apocalipse Robô in finalizeDay)
+      const targets = aliveHumans.length > 0 ? aliveNow.filter((t) => t.id !== p.id) : [];
       botVotes[p.id] = targets.length > 0 ? targets[Math.floor(Math.random() * targets.length)].id : null;
     }
     if (Object.keys(botVotes).length > 0) {
@@ -246,6 +247,13 @@ export async function finalizeNight(roomCode: string, round: number) {
         { merge: true },
       );
     }
+  }
+
+  // If no human players remain alive, auto-finalize the day — no one can click the button
+  const aliveAfterDawn = Object.values(res.players).filter((p) => p.alive && !p.eliminated && !p.expelled);
+  const aliveHumansAfterDawn = aliveAfterDawn.filter((p) => !players.find((pl) => pl.id === p.id)?.isBot);
+  if (aliveHumansAfterDawn.length === 0) {
+    await finalizeDay(roomCode, round);
   }
 }
 
@@ -257,6 +265,34 @@ export async function finalizeDay(roomCode: string, round: number) {
 
   const players = await loadPlayers(roomCode);
   const secrets = await loadSecrets(roomCode);
+
+  // If no human players remain, force-end the game immediately
+  const aliveHumansCheck = players.filter(
+    (p) => !p.isBot && p.alive !== false && !p.eliminated && !p.expelled,
+  );
+  if (aliveHumansCheck.length === 0) {
+    const wpCheck: Record<string, WinPlayerSnapshot> = {};
+    for (const p of players) {
+      const r = secrets[p.id]?.role;
+      if (!r) continue;
+      wpCheck[p.id] = {
+        id: p.id,
+        role: r,
+        alive: p.alive !== false,
+        eliminated: Boolean(p.eliminated),
+        expelled: Boolean(p.expelled),
+        individualObjectiveMet: Boolean(p.individualObjectiveMet),
+      };
+    }
+    const forcedWinner = checkCollectiveWin(wpCheck, round, Number(room.maxRounds ?? 7)) ?? "bots";
+    const revealedRolesCheck: Record<string, string> = {};
+    for (const p of players) {
+      const r = secrets[p.id]?.role;
+      if (r) revealedRolesCheck[p.id] = r;
+    }
+    await roomRef.update({ status: "ended", phase: "ended", winner: forcedWinner, votingOpen: false, revealedRoles: revealedRolesCheck });
+    return;
+  }
 
   const voteSnap = await roomRef.collection("votes").doc(String(round)).get();
   const votesRaw = voteSnap.data() ?? {};
@@ -286,7 +322,7 @@ export async function finalizeDay(roomCode: string, round: number) {
     const msg =
       role === "bras_cubas"
         ? `Espera. ${expelled.name} sorri. Era o Tolo — e ser expulso era exatamente o que queria.`
-        : `${expelled.name} é expulso(a) da cidade. Era ${displayRoleName(role)}.`;
+        : `A cidade votou pela expulsão de: ${expelled.name}.`;
     batch.set(roomRef.collection("publicLogEntries").doc(), {
       round,
       type: role === "bras_cubas" ? "special" : "expulsion",
@@ -338,8 +374,7 @@ export async function finalizeDay(roomCode: string, round: number) {
     await roomRef.update({ status: "ended", phase: "ended", winner: w, votingOpen: false, revealedRoles });
   } else {
     const nextRound = round + 1;
-    await startNightSequence(roomCode, nextRound);
-    await processBotNightActions(roomCode, nextRound);
+    await roomRef.update({ pendingNightStart: true, pendingNightRound: nextRound });
   }
 }
 

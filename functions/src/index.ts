@@ -593,6 +593,25 @@ export const markSaciGorroOffer = onCall(async (req) => {
   return { ok: true };
 });
 
+export const startNight = onCall(async (req) => {
+  const uid = requireAuth(req);
+  const code = String(req.data?.roomCode ?? "").toUpperCase().trim();
+  if (!code) throw new HttpsError("invalid-argument", "Código inválido.");
+
+  const roomRef = db.collection("rooms").doc(code);
+  const roomSnap = await roomRef.get();
+  if (!roomSnap.exists) throw new HttpsError("not-found", "Sala não encontrada.");
+  const room = roomSnap.data()!;
+  if (room.hostUid !== uid) throw new HttpsError("permission-denied", "Apenas o anfitrião pode iniciar a noite.");
+  if (!room.pendingNightStart) throw new HttpsError("failed-precondition", "Noite ainda não pronta para iniciar.");
+
+  const nextRound = Number(room.pendingNightRound ?? (Number(room.round ?? 1) + 1));
+  await roomRef.update({ pendingNightStart: false, pendingNightRound: null });
+  await startNightSequence(code, nextRound);
+  await processBotNightActions(code, nextRound);
+  return { ok: true };
+});
+
 export const advanceDay = onCall(async (req) => {
   const uid = requireAuth(req);
   const code = String(req.data?.roomCode ?? "").toUpperCase().trim();

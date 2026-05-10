@@ -52,7 +52,7 @@ const ROLE_LORE: Record<string, string> = {
   lobisomem:
     "Você era um homem antes da maldição. Ninguém sabe exatamente quem — você mesmo já não tem certeza. A transformação apagou partes da memória junto com a forma humana. O que sobrou é fome e instinto, e uma consciência que aparece nos momentos errados, tarde demais pra mudar o que já foi feito.",
   saci:
-    "Você não tem raiva de ninguém em particular. Tem raiva de todo mundo em geral. Bacuré é uma cidade de gente que se leva a sério demais — e você não aguenta gente que se leva a sério. Você embaralha as coisas por prazer, por princípio, e porque o caos que deixa pra trás sempre revela algo que a ordem estava escondendo.",
+    "Você não tem raiva de ninguém em particular. Tem raiva de todo mundo em geral. Bucaré é uma cidade de gente que se leva a sério demais — e você não aguenta gente que se leva a sério. Você embaralha as coisas por prazer, por princípio, e porque o caos que deixa pra trás sempre revela algo que a ordem estava escondendo.",
   mula:
     "Você foi Donária. Uma mulher devota, casada, destruída pelo homem em quem mais confiava. Quando a verdade veio à tona de forma torta — como as verdades sempre vêm em cidade pequena — foi você quem pagou o preço. Donária desapareceu numa quinta-feira à noite. A Mula sem Cabeça não esqueceu o nome do homem que a destruiu.",
   boto:
@@ -60,21 +60,21 @@ const ROLE_LORE: Record<string, string> = {
   iara:
     "Você não veio ao baile. Você não vai à feira. Você mora no rio que passa atrás da cidade, e as pessoas que vão buscar água tarde da noite às vezes ouvem uma voz que não é de gente. Os que voltam, voltam distraídos. Os que não voltam, não voltam.",
   curupira:
-    "Você não quer nada com Bacuré. Você é da floresta — e a floresta está sendo derrubada pelo Coronel Agenor para plantar mais pasto. Você entrou na cidade porque a floresta está diminuindo e você com ela. Você não tem lado: tem território. E qualquer pessoa que ameace o que sobrou do mato vai descobrir o que significa se perder sem bússola numa mata fechada.",
+    "Você não quer nada com Bucaré. Você é da floresta — e a floresta está sendo derrubada pelo Coronel Agenor para plantar mais pasto. Você entrou na cidade porque a floresta está diminuindo e você com ela. Você não tem lado: tem território. E qualquer pessoa que ameace o que sobrou do mato vai descobrir o que significa se perder sem bússola numa mata fechada.",
   doutor:
-    "Você é Ernesto Cavalcante. Chegou de fora — formado no Recife, veio pra Bacuré porque a cidade precisava de médico e você precisava de um lugar longe dos credores. É competente, cínico, e o único homem na cidade que fala a verdade com regularidade — não por virtude, mas porque a mentira dá trabalho e você é preguiçoso. Você salva quem consegue salvar. Quem não consegue, enterra e segue em frente.",
+    "Você é Ernesto Cavalcante. Chegou de fora — formado no Recife, veio pra Bucaré porque a cidade precisava de médico e você precisava de um lugar longe dos credores. É competente, cínico, e o único homem na cidade que fala a verdade com regularidade — não por virtude, mas porque a mentira dá trabalho e você é preguiçoso. Você salva quem consegue salvar. Quem não consegue, enterra e segue em frente.",
   mae_de_santo:
-    "Você é Maria Conga. Chegou a Bacuré vinda de não se sabe onde, instalou seu terreiro na beira do rio e nunca mais saiu. A cidade oficial finge que você não existe. O povo vai ao terreiro às escondidas, de madrugada, quando a medicina do Doutor não resolve e a fé do Padre não chega. Você conhece o folclore do sertão melhor do que qualquer criatura conhece a si mesma.",
+    "Você é Maria Conga. Chegou a Bucaré vinda de não se sabe onde, instalou seu terreiro na beira do rio e nunca mais saiu. A cidade oficial finge que você não existe. O povo vai ao terreiro às escondidas, de madrugada, quando a medicina do Doutor não resolve e a fé do Padre não chega. Você conhece o folclore do sertão melhor do que qualquer criatura conhece a si mesma.",
   geni:
-    "Você era filha de ninguém, criada na casa grande do Coronel desde menina. Aprendeu cedo que não tinha herança nem sobrenome — só o que o próprio corpo e coração podiam oferecer. Virou a mulher mais desejada de Bacuré não por malícia, mas por genuína generosidade. Trinta anos servindo na casa do Coronel ensinaram que quem serve vê tudo. E quem vê tudo tem poder.",
+    "Você era filha de ninguém, criada na casa grande do Coronel desde menina. Aprendeu cedo que não tinha herança nem sobrenome — só o que o próprio corpo e coração podiam oferecer. Virou a mulher mais desejada de Bucaré não por malícia, mas por genuína generosidade. Trinta anos servindo na casa do Coronel ensinaram que quem serve vê tudo. E quem vê tudo tem poder.",
   boitata:
-    "Você vigia os campos à noite. Seus muitos olhos — comidos de cadáveres de animais mortos pelos incêndios do Coronel — enxergam tudo no escuro. Você não gosta de Bacuré. Não gosta do Coronel. Mas também não gosta das criaturas que saem caçando à noite sem necessidade. Você está aqui porque alguém precisa ver, e você é o único que enxerga no escuro sem se perder.",
+    "Você vigia os campos à noite. Seus muitos olhos — comidos de cadáveres de animais mortos pelos incêndios do Coronel — enxergam tudo no escuro. Você não gosta de Bucaré. Não gosta do Coronel. Mas também não gosta das criaturas que saem caçando à noite sem necessidade. Você está aqui porque alguém precisa ver, e você é o único que enxerga no escuro sem se perder.",
   cartomante:
     "Você é Perpétua. Lê as cartas há quarenta anos na mesma mesa, no mesmo cômodo, com a mesma toalha bordada. Nunca errou uma previsão — ou melhor, nunca fez uma previsão que não pudesse ser interpretada como certa depois dos fatos. Você sabe o que as pessoas escondem. Não por dom sobrenatural, mas porque em cidade pequena, segredo que um guarda dois já sabem — e você ouve muito e fala pouco.",
   delegado:
     "Você é Tobias Mourão. Na prática, o braço do Coronel. Não por maldade — você acredita genuinamente que manter a ordem é manter o Coronel, e manter o Coronel é manter a cidade funcionando. Você prende quem o Coronel indica, investiga quem o Coronel suspeita, e dorme bem todas as noites porque nunca se perguntou se estava do lado certo.",
   cangaceiro:
-    "Ninguém sabe o seu nome verdadeiro. Você apareceu em Bacuré há três anos, vive nas bordas da caatinga, entra na cidade quando quer e some quando precisa. O que te trouxe até aqui foi o rio — ou melhor, o que o rio levou. Sua irmã desapareceu numa noite de festa ribeirinha. Encontraram o chapéu dela na beira d'água. Você rastreou o folclore do sertão inteiro e ficou em Bacuré. Dizem que você é duro como pedra. Mas Geni é a única pessoa da cidade que já te viu rir.",
+    "Ninguém sabe o seu nome verdadeiro. Você apareceu em Bucaré há três anos, vive nas bordas da caatinga, entra na cidade quando quer e some quando precisa. O que te trouxe até aqui foi o rio — ou melhor, o que o rio levou. Sua irmã desapareceu numa noite de festa ribeirinha. Encontraram o chapéu dela na beira d'água. Você rastreou o folclore do sertão inteiro e ficou em Bucaré. Dizem que você é duro como pedra. Mas Geni é a única pessoa da cidade que já te viu rir.",
   bras_cubas:
     "Você era o filho mais velho de uma família que já teve dinheiro e agora só tem o sobrenome. Estudou em Olinda, leu todos os livros errados, voltou convencido de que a vida não tem sentido e que a única coisa honesta que um homem pode fazer é reconhecer isso abertamente. A cidade acha que você é louco. Você acha que a cidade é que é louca. Nenhum dos dois está completamente errado. Você quer ser expulso por votação pública — não por merecer, mas como ato filosófico.",
   padre:
@@ -82,7 +82,7 @@ const ROLE_LORE: Record<string, string> = {
   coronel:
     "Você é Agenor Furtado. Sempre mandou. Seu pai mandava antes de você, e o pai do pai antes disso. As terras ao redor da cidade têm o sobrenome da família gravado nos mourões de cerca. Você não é um homem violento. É pior: é um homem paciente. Você espera. Você cobra. E quando decide que alguém precisa sair da cidade, aquela pessoa some — da maneira mais prosaica possível.",
   aldeao:
-    "Você é um morador de Bacuré. Conhece os vizinhos pelo nome, sabe quem deve a quem, e notou que as noites últimas estão diferentes — silenciosas de um jeito que não é natural. Você não tem poderes. Tem olhos abertos e bom senso. Em Bacuré, às vezes é o suficiente.",
+    "Você é um morador de Bucaré. Conhece os vizinhos pelo nome, sabe quem deve a quem, e notou que as noites últimas estão diferentes — silenciosas de um jeito que não é natural. Você não tem poderes. Tem olhos abertos e bom senso. Em Bucaré, às vezes é o suficiente.",
 };
 
 type View = "intro" | "create" | "join" | "joinName";
@@ -98,6 +98,8 @@ type RoomDoc = DocumentData & {
   votingOpen?: boolean;
   votesRound?: number;
   pendingBrasChoice?: boolean;
+  pendingNightStart?: boolean;
+  pendingNightRound?: number;
   winner?: string | null;
   daySubPhase?: string;
   pendingSaciGorro?: boolean;
@@ -1007,7 +1009,7 @@ export function App() {
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                 {room.round === 1 && myRole && ROLE_LORE[myRole] && (
                   <div className="game-card lore-card">
-                    <strong className="lore-card__label">Bacuré do Sertão, 1922.</strong>
+                    <strong className="lore-card__label">Bucaré do Sertão, 1922.</strong>
                     <p style={{ margin: 0 }}>{ROLE_LORE[myRole]}</p>
                   </div>
                 )}
@@ -1117,13 +1119,17 @@ export function App() {
             return (
               <div className="stack stack--dense day-phase">
                 <div className="game-card log-card day-section folhetim-card">
-                  <strong className="folhetim-title">Folhetim de Bacuré</strong>
+                  <strong className="folhetim-title">Folhetim de Bucaré</strong>
                   {dawnEntries.filter((e) => e.type !== "dawn").map((e) => (
                     <p key={e.id}>{e.message}</p>
                   ))}
                   {!hasDeathOrElimination && (
                     <p className="muted">Ninguém foi eliminado esta noite.</p>
                   )}
+                  {publicLog
+                    .filter((e) => e.type === "expulsion" && e.round === currentRound)
+                    .map((e) => <p key={e.id}>{e.message}</p>)
+                  }
                   {privateLog.filter((e) => e.round === currentRound).map((e) => (
                     <p key={e.id} className="private-log-entry">🔒 {e.message}</p>
                   ))}
@@ -1191,7 +1197,7 @@ export function App() {
                   <p className="muted day-section">Você não tem direito a voto nesta rodada.</p>
                 ) : (
                   <div className="day-section vote-block">
-                    <label>Seu voto</label>
+                    <label>Seu voto - vote para expulsar um suspeito</label>
                     <select
                       value={voteSelectValue}
                       disabled={hasVoted || loading}
@@ -1235,6 +1241,18 @@ export function App() {
                       {allVotesIn
                         ? "Encerrar dia e contar votos"
                         : `Aguardando votos — ${eligibleVoters.filter((p) => Object.hasOwn(dayRoundVotes, p.id ?? "")).length} de ${eligibleVoters.length}`}
+                    </button>
+                  </div>
+                )}
+                {isHost && room.pendingNightStart && (
+                  <div className="day-section vote-block">
+                    <button
+                      type="button"
+                      className="primary-btn"
+                      disabled={loading}
+                      onClick={() => run("startNight", { roomCode })}
+                    >
+                      Toque de recolher
                     </button>
                   </div>
                 )}
@@ -1365,10 +1383,12 @@ export function App() {
             ? "Os moradores controlaram as criaturas"
             : room.winner === "criaturas"
               ? "As criaturas dominaram a cidade dos humanos"
-              : (() => {
-                  const wp = players.find((p) => p.id === room.winner);
-                  return wp ? `${wp.name} venceu` : "Fim de jogo";
-                })();
+              : room.winner === "bots"
+                ? "Apocalipse Robô"
+                : (() => {
+                    const wp = players.find((p) => p.id === room.winner);
+                    return wp ? `${wp.name} venceu` : "Fim de jogo";
+                  })();
 
         const revealed = room.revealedRoles ?? {};
         const SIDE_LABEL: Record<string, string> = {

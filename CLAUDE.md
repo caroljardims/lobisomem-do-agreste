@@ -39,6 +39,8 @@ Sistema de party game remoto baseado em turnos. Jogadores acessam via browser no
   saciActedLastNight: boolean,   // Saci agiu na noite anterior (aplicado ao dia atual)
   geniInvestigatedTargets: string[], // IDs investigados pela Geni nessa noite (acumulados)
   pendingBrasChoice: boolean,    // Brás Cubas foi expulso e precisa escolher
+  pendingNightStart: boolean,    // expulsão processada, aguardando anfitrião iniciar a noite
+  pendingNightRound: number,     // próxima rodada a iniciar quando pendingNightStart for resolvido
   individualWins: [              // vitórias individuais registradas; não encerram a partida
     {
       playerId: string,
@@ -48,7 +50,7 @@ Sistema de party game remoto baseado em turnos. Jogadores acessam via browser no
       timestamp: timestamp
     }
   ],
-  winner: null | 'moradores' | 'criaturas' | playerId,
+  winner: null | 'moradores' | 'criaturas' | 'bots' | playerId,
   createdAt: timestamp
 }
 ```
@@ -148,9 +150,12 @@ Em implementações Firestore, preferir **subcoleções** para `publicLog` / `pr
    b. Amanhecer — sistema resolve ações via resolveDawn() e publica log público
       - Panorama visível a todos: mortes, aterrorizações, invocações, etc.
    c. Fase do dia — discussão + votação (sempre aberta)
-      - Bots votam automaticamente no início do dia
+      - Bots votam automaticamente no início do dia (alvos aleatórios entre todos os vivos quando há humanos; nulo quando só bots restam)
       - Dia encerra quando todos os elegíveis votaram → finalizeDay()
-   d. Verificação de condições de vitória → checkCollectiveWin()
+      - Se nenhum humano restar ao amanhecer: finalizeDay() é chamado automaticamente sem botão
+   d. Expulsão processada → pendingNightStart: true → anfitrião vê botão "Toque de recolher"
+   e. Anfitrião clica → startNight() → noite seguinte começa
+   f. Verificação de condições de vitória → checkCollectiveWin()
 5. Fim de jogo — sistema anuncia vencedor
    - Anfitrião pode reiniciar: botão "Recomeçar" reseta subcoleções e estado dos jogadores
 ```
@@ -391,13 +396,11 @@ A votação fica **sempre aberta** durante toda a fase do dia — não há botã
 
 ### Expulsão
 
-Sistema revela identidade do expulso imediatamente.
+Sistema registra a expulsão e exibe no Folhetim. Anfitrião vê botão "Toque de recolher" para iniciar a noite após a leitura.
 
-| Situação | Texto |
+| Situação | Texto no Folhetim |
 |---|---|
-| Criatura | *"[Nome] é expulso(a) da cidade. Era [identidade]. O folclore perde uma de suas forças."* |
-| Morador | *"[Nome] é expulso(a) da cidade. Era apenas [identidade]. A cidade cometeu um erro."* |
-| Neutro | *"[Nome] é expulso(a) da cidade. Era [identidade]. Nem humano, nem monstro."* |
+| Qualquer jogador | *"A cidade votou pela expulsão de: [Nome]."* |
 | Brás Cubas | *"Espera. [Nome] sorri. Era o Tolo — e ser expulso era exatamente o que queria."* |
 
 Se Brás Cubas for expulso: sistema oferece escolha a ele — encerrar o jogo com sua vitória ou continuar como Aldeão por mais uma rodada.
@@ -430,6 +433,7 @@ Sistema verifica após cada amanhecer e após cada expulsão:
 | Mula elimina o Padre | Mula vence individualmente — jogo continua |
 | Iara elimina o Delegado com Voz Encantadora | Iara vence individualmente — jogo continua |
 | Cangaceiro usa Tiro Certo na Iara | Cangaceiro vence individualmente — jogo continua |
+| Todos os jogadores humanos eliminados/expulsos, só bots restam | Apocalipse Robô (`winner: "bots"`) |
 
 **Vitórias individuais não encerram o jogo** — apenas registram a conquista do personagem. O jogo segue até uma condição coletiva ser atingida.
 
@@ -449,6 +453,7 @@ Sistema verifica após cada amanhecer e após cada expulsão:
 | Mula elimina Padre | *"A maldição foi cumprida. A Mula sem Cabeça encontrou o Padre. Ela vence."* |
 | Iara elimina Delegado | *"O Delegado foi arrastado para as profundezas. Iara vence."* |
 | Cangaceiro elimina Iara | *"O acerto de contas foi feito. O Cangaceiro vence."* |
+| Apocalipse Robô | *"Apocalipse Robô"* (tela de fim de jogo com `winner: "bots"`) |
 
 ---
 
@@ -488,10 +493,12 @@ Sistema verifica após cada amanhecer e após cada expulsão:
 - `startGame` — sorteia personagens, porta-voz, inicia noite 1; executa bots se presentes
 - `submitNightAction` — registra ação noturna; avança `nightPendingRoles`; chama `finalizeNight` se vazio
 - `submitVote` — registra voto; se todos elegíveis votaram → chama `finalizeDay`
-- `finalizeNight` — resolve `resolveDawn()`, aplica resultados, muda `status` para `"day"`, vota bots automaticamente
-- `finalizeDay` — tally de votos, processa expulsão, verifica vitória ou avança para próxima noite
+- `finalizeNight` — resolve `resolveDawn()`, aplica resultados, muda `status` para `"day"`, vota bots automaticamente; se só restam bots, chama `finalizeDay()` automaticamente
+- `finalizeDay` — tally de votos, processa expulsão; se nenhum humano vivo → encerra como Apocalipse Robô; se expulsão sem vitória → `pendingNightStart: true`; se sem expulsão → avança para próxima noite
+- `startNight` — (host only) lê `pendingNightRound`, limpa `pendingNightStart`, chama `startNightSequence`
 - `restartGame` — (host only, status `"ended"`) deleta subcoleções via `db.recursiveDelete()`, reseta jogadores e sala para lobby
 - `processBotNightActions` — bots escolhem alvos aleatórios e submetem ações noturnas; se todos pending são bots → chama `finalizeNight`
+- `findPlayer(players, req)` — helper em `index.ts`: busca jogador por `playerId` (localStorage, estável) antes de fallback para `uid` (pode mudar em re-auth anônima)
 
 ### UX do frontend (`apps/web/src/App.tsx`)
 
@@ -506,9 +513,12 @@ Sistema verifica após cada amanhecer e após cada expulsão:
 - Campo de voto sempre exibido para jogadores elegíveis (alive, não seduced, não jailed)
 - Jogadores inelegíveis veem mensagem de aviso
 - Não há botões de "abrir" ou "encerrar" votação — o processo é automático
+- Folhetim exibe eventos da noite + expulsão do dia corrente (seção dedicada, tipo `"expulsion"`)
+- Após expulsão sem vitória: anfitrião vê botão **"Toque de recolher"** → chama `startNight`
 
 **Fim de jogo:**
 - Anfitrião vê botão "Recomeçar" → chama `restartGame` → sala volta ao lobby com os mesmos jogadores
+- `winner: "bots"` → tela exibe "Apocalipse Robô"
 
 
 # To Do
@@ -528,3 +538,7 @@ Sistema verifica após cada amanhecer e após cada expulsão:
 - ✓ Feedback dos botões — ações noturnas e do dia têm estado de carregamento e confirmação (✓ Ação registrada); botão fica inativo após envio
 - ✓ Chat — altura e design — `.chat-card` com `min-height: 160px / max-height: 320px`; mensagens de voto em estilo muted menor
 - ✓ Bots interativos no chat — ao início do dia, um bot aleatório envia frase temática do banco de frases (`BOT_PHRASES` em `finalizeNight`)
+- ✓ Toque de recolher — após expulsão sem vitória, jogo pausa em `status: "day"` com `pendingNightStart: true`; anfitrião clica "Toque de recolher" → `startNight` → noite começa; expulsão exibida no Folhetim durante a pausa
+- ✓ Apocalipse Robô — quando todos os humanos saem e só bots restam, `finalizeDay()` detecta e encerra com `winner: "bots"`; bots votam nulo neste cenário (votam em qualquer vivo quando há humanos)
+- ✓ findPlayer — lookup por `playerId` (localStorage) antes de uid, evitando quebra quando Firebase renova uid de auth anônima
+- ✓ Flags de status por rodada — `dawnResolver` reseta `seduced`, `jailed`, `enchanted`, `blockedNextNight`, `invoked`, `silenced`, `silencedRounds` a cada amanhecer (antes eram acumulados permanentemente)
