@@ -47,6 +47,43 @@ const ROLE_DISPLAY: Record<string, string> = {
   aldeao: "Aldeão",
 };
 
+const ROLE_LORE: Record<string, string> = {
+  lobisomem:
+    "Você era um homem antes da maldição. Ninguém sabe exatamente quem — você mesmo já não tem certeza. A transformação apagou partes da memória junto com a forma humana. O que sobrou é fome e instinto, e uma consciência que aparece nos momentos errados, tarde demais pra mudar o que já foi feito.",
+  saci:
+    "Você não tem raiva de ninguém em particular. Tem raiva de todo mundo em geral. Bacuré é uma cidade de gente que se leva a sério demais — e você não aguenta gente que se leva a sério. Você embaralha as coisas por prazer, por princípio, e porque o caos que deixa pra trás sempre revela algo que a ordem estava escondendo.",
+  mula:
+    "Você foi Donária. Uma mulher devota, casada, destruída pelo homem em quem mais confiava. Quando a verdade veio à tona de forma torta — como as verdades sempre vêm em cidade pequena — foi você quem pagou o preço. Donária desapareceu numa quinta-feira à noite. A Mula sem Cabeça não esqueceu o nome do homem que a destruiu.",
+  boto:
+    "Você aparece nas festas com chapéu de palha branca e paletó de linho. Ninguém sabe de onde vem. Você dança bem, fala melhor ainda, e toda vez que aparece, alguém acorda no dia seguinte sem memória da noite anterior. A cidade desconfia, mas você sempre tem uma história pronta — e as suas histórias são sempre melhores que a verdade.",
+  iara:
+    "Você não veio ao baile. Você não vai à feira. Você mora no rio que passa atrás da cidade, e as pessoas que vão buscar água tarde da noite às vezes ouvem uma voz que não é de gente. Os que voltam, voltam distraídos. Os que não voltam, não voltam.",
+  curupira:
+    "Você não quer nada com Bacuré. Você é da floresta — e a floresta está sendo derrubada pelo Coronel Agenor para plantar mais pasto. Você entrou na cidade porque a floresta está diminuindo e você com ela. Você não tem lado: tem território. E qualquer pessoa que ameace o que sobrou do mato vai descobrir o que significa se perder sem bússola numa mata fechada.",
+  doutor:
+    "Você é Ernesto Cavalcante. Chegou de fora — formado no Recife, veio pra Bacuré porque a cidade precisava de médico e você precisava de um lugar longe dos credores. É competente, cínico, e o único homem na cidade que fala a verdade com regularidade — não por virtude, mas porque a mentira dá trabalho e você é preguiçoso. Você salva quem consegue salvar. Quem não consegue, enterra e segue em frente.",
+  mae_de_santo:
+    "Você é Maria Conga. Chegou a Bacuré vinda de não se sabe onde, instalou seu terreiro na beira do rio e nunca mais saiu. A cidade oficial finge que você não existe. O povo vai ao terreiro às escondidas, de madrugada, quando a medicina do Doutor não resolve e a fé do Padre não chega. Você conhece o folclore do sertão melhor do que qualquer criatura conhece a si mesma.",
+  geni:
+    "Você era filha de ninguém, criada na casa grande do Coronel desde menina. Aprendeu cedo que não tinha herança nem sobrenome — só o que o próprio corpo e coração podiam oferecer. Virou a mulher mais desejada de Bacuré não por malícia, mas por genuína generosidade. Trinta anos servindo na casa do Coronel ensinaram que quem serve vê tudo. E quem vê tudo tem poder.",
+  boitata:
+    "Você vigia os campos à noite. Seus muitos olhos — comidos de cadáveres de animais mortos pelos incêndios do Coronel — enxergam tudo no escuro. Você não gosta de Bacuré. Não gosta do Coronel. Mas também não gosta das criaturas que saem caçando à noite sem necessidade. Você está aqui porque alguém precisa ver, e você é o único que enxerga no escuro sem se perder.",
+  cartomante:
+    "Você é Perpétua. Lê as cartas há quarenta anos na mesma mesa, no mesmo cômodo, com a mesma toalha bordada. Nunca errou uma previsão — ou melhor, nunca fez uma previsão que não pudesse ser interpretada como certa depois dos fatos. Você sabe o que as pessoas escondem. Não por dom sobrenatural, mas porque em cidade pequena, segredo que um guarda dois já sabem — e você ouve muito e fala pouco.",
+  delegado:
+    "Você é Tobias Mourão. Na prática, o braço do Coronel. Não por maldade — você acredita genuinamente que manter a ordem é manter o Coronel, e manter o Coronel é manter a cidade funcionando. Você prende quem o Coronel indica, investiga quem o Coronel suspeita, e dorme bem todas as noites porque nunca se perguntou se estava do lado certo.",
+  cangaceiro:
+    "Ninguém sabe o seu nome verdadeiro. Você apareceu em Bacuré há três anos, vive nas bordas da caatinga, entra na cidade quando quer e some quando precisa. O que te trouxe até aqui foi o rio — ou melhor, o que o rio levou. Sua irmã desapareceu numa noite de festa ribeirinha. Encontraram o chapéu dela na beira d'água. Você rastreou o folclore do sertão inteiro e ficou em Bacuré. Dizem que você é duro como pedra. Mas Geni é a única pessoa da cidade que já te viu rir.",
+  bras_cubas:
+    "Você era o filho mais velho de uma família que já teve dinheiro e agora só tem o sobrenome. Estudou em Olinda, leu todos os livros errados, voltou convencido de que a vida não tem sentido e que a única coisa honesta que um homem pode fazer é reconhecer isso abertamente. A cidade acha que você é louco. Você acha que a cidade é que é louca. Nenhum dos dois está completamente errado. Você quer ser expulso por votação pública — não por merecer, mas como ato filosófico.",
+  padre:
+    "Você é Anselmo Coutinho. Chegou à cidade trinta anos atrás com a missão de catequizar o sertão. É respeitado, temido um pouco, e tem a chave da única igreja da cidade. O que a cidade não sabe — ou finge não saber — é que você não é um homem de fé. É um homem de poder. A batina é um uniforme como outro qualquer. Você catequiza porque catequizar é controlar. E há um nome que você prefere não ouvir em voz alta: Donária.",
+  coronel:
+    "Você é Agenor Furtado. Sempre mandou. Seu pai mandava antes de você, e o pai do pai antes disso. As terras ao redor da cidade têm o sobrenome da família gravado nos mourões de cerca. Você não é um homem violento. É pior: é um homem paciente. Você espera. Você cobra. E quando decide que alguém precisa sair da cidade, aquela pessoa some — da maneira mais prosaica possível.",
+  aldeao:
+    "Você é um morador de Bacuré. Conhece os vizinhos pelo nome, sabe quem deve a quem, e notou que as noites últimas estão diferentes — silenciosas de um jeito que não é natural. Você não tem poderes. Tem olhos abertos e bom senso. Em Bacuré, às vezes é o suficiente.",
+};
+
 type View = "intro" | "create" | "join" | "joinName";
 
 type RoomDoc = DocumentData & {
@@ -878,6 +915,12 @@ export function App() {
 
             return (
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                {room.round === 1 && myRole && ROLE_LORE[myRole] && (
+                  <div className="game-card lore-card">
+                    <strong className="lore-card__label">Bacuré do Sertão, 1922.</strong>
+                    <p style={{ margin: 0 }}>{ROLE_LORE[myRole]}</p>
+                  </div>
+                )}
                 {myRoleIsPending ? (
                   <>
                     {myRole && ROLE_NIGHT_DESCRIPTION[myRole] && (
