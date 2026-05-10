@@ -1115,6 +1115,14 @@ input::placeholder {
   font-size: 13px;
 }
 
+.private-log-entry {
+  font-size: 13px;
+  color: #c8b97a;
+  border-left: 2px solid #c8b97a44;
+  padding-left: 8px;
+  margin: 4px 0;
+}
+
 /* ── Responsive ── */
 
 @media (min-width: 640px) {

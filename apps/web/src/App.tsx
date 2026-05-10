@@ -95,6 +95,7 @@ export function App() {
   const [players, setPlayers] = useState<PlayerDoc[]>([]);
   const [myRole, setMyRole] = useState<string | null>(null);
   const [publicLog, setPublicLog] = useState<{ id: string; message?: string; round?: number; type?: string }[]>([]);
+  const [privateLog, setPrivateLog] = useState<{ id: string; message?: string; round?: number }[]>([]);
   const [chat, setChat] = useState<{ id: string; name?: string; text?: string }[]>([]);
   const [chatText, setChatText] = useState("");
   const [voteTarget, setVoteTarget] = useState<string>("");
@@ -155,6 +156,17 @@ export function App() {
     return onSnapshot(doc(db, "rooms", roomCode, "secrets", playerId), (s) => {
       setMyRole(s.exists() ? String((s.data() as { role?: string }).role ?? "") : null);
     });
+  }, [roomCode, playerId]);
+
+  useEffect(() => {
+    if (!roomCode || !playerId) { setPrivateLog([]); return; }
+    const q = query(
+      collection(db, "rooms", roomCode, "privateLog", playerId, "entries"),
+      orderBy("round", "asc"),
+    );
+    return onSnapshot(q, (snap) =>
+      setPrivateLog(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    );
   }, [roomCode, playerId]);
 
   useEffect(() => {
@@ -317,7 +329,7 @@ export function App() {
     geni:         "Você conversa com alguém e o sistema revela: morador ou criatura.",
     boitata:      "Você investiga alguém para descobrir seu lado.",
     cartomante:   "Você lê o destino de alguém para revelar se é morador ou criatura.",
-    delegado:     "Você prende alguém — ele perde o voto no próximo dia e você descobre seu lado.",
+    delegado:     "Você prende alguém — ele perde o voto no próximo dia. A prisão deve ser justificada e o motivo será lido publicamente.",
     cangaceiro:   "Você consulta se a Geni já investigou seu alvo, preparando o Tiro Certo para o dia.",
   };
 
@@ -861,7 +873,8 @@ export function App() {
             const targetPool = myRole === "mae_de_santo"
               ? players.filter((p) => p.eliminated && !p.expelled)
               : players.filter((p) => p.id !== playerId && p.alive !== false && !p.eliminated && !p.expelled);
-            const canSubmit = !loading && !!nightTarget && (!needsAlignment || !!nightSpecialAction);
+            const needsJailReason = myRole === "delegado";
+            const canSubmit = !loading && !!nightTarget && (!needsAlignment || !!nightSpecialAction) && (!needsJailReason || !!nightSpecialAction?.trim());
 
             return (
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
@@ -890,6 +903,18 @@ export function App() {
                           <option value="moradores">moradores</option>
                           <option value="criaturas">criaturas</option>
                         </select>
+                      </>
+                    )}
+                    {needsJailReason && (
+                      <>
+                        <label>Motivo da prisão (será lido publicamente)</label>
+                        <input
+                          type="text"
+                          placeholder="ex: comportamento suspeito na última noite"
+                          value={nightSpecialAction ?? ""}
+                          onChange={(e) => setNightSpecialAction(e.target.value)}
+                          maxLength={120}
+                        />
                       </>
                     )}
                     <label>Alvo</label>
@@ -966,6 +991,9 @@ export function App() {
                   {!hasDeathOrElimination && (
                     <p className="muted">Ninguém foi eliminado esta noite.</p>
                   )}
+                  {privateLog.filter((e) => e.round === currentRound).map((e) => (
+                    <p key={e.id} className="private-log-entry">🔒 {e.message}</p>
+                  ))}
                   {outOfGame.length > 0 && (
                     <p className="muted" style={{ marginTop: "0.5rem" }}>
                       Fora do jogo: {outOfGame.map((p) => p.name).join(", ")}

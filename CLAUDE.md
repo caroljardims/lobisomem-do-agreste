@@ -215,7 +215,7 @@ Após o sorteio, o sistema envia notificações privadas:
 | 9 | Geni | Geni | Conversa / obtém identidade |
 | 10 | Informantes | Boitatá | Investiga + alinhamento (1ª noite) |
 | 11 | Informantes | Cartomante | Investiga |
-| 12 | Informantes | Delegado | Prende e investiga |
+| 12 | Informantes | Delegado | Prende com justificativa pública |
 | 13 | Informantes | Cangaceiro | Consulta prévia ao Tiro Certo |
 
 ### Comportamento do sistema por personagem
@@ -295,10 +295,11 @@ Se um personagem não está na partida ou está morto/expulso, o sistema pula au
 - **Objetivo:** sistema contabiliza identificações corretas comunicadas ao grupo no dia
 
 **Delegado**
-- Opções: selecionar alvo para prender ou passar
+- Opções: selecionar alvo + escrever motivo da prisão (texto obrigatório)
 - Sistema marca `jailed: true` no alvo — sem voto no próximo dia
-- Sistema responde apenas ao Delegado: morador ou criatura
-- Uso único por jogo
+- Motivo é publicado no log público do amanhecer (porta-voz lê em voz alta)
+- Delegado não descobre se o alvo é morador ou criatura
+- Pode prender toda noite (sem limite de usos)
 
 **Cangaceiro**
 - Opções: consultar alvo ou passar
@@ -327,7 +328,7 @@ Após todos agirem, o sistema resolve na seguinte ordem antes de publicar qualqu
    - Alvo é Brás Cubas, Mãe de Santo ou Cangaceiro → falha silenciosa
 6. **Curupira/Doutor:** proteções já verificadas no passo anterior
 7. **Mãe de Santo:** ativar `invoked` no jogador escolhido
-8. **Boitatá/Cartomante/Delegado/Cangaceiro:** registrar resultados nos logs privados
+8. **Boitatá/Cartomante/Cangaceiro:** registrar resultados nos logs privados; **Delegado:** publicar prisão + motivo no log público
 9. **Verificar vitórias individuais:**
    - Mula eliminou o Padre?
    - Iara eliminou o Delegado com Voz Encantadora?
@@ -514,7 +515,7 @@ Sistema verifica após cada amanhecer e após cada expulsão:
 
 ## Pendente
 
-- **Espaçamento:** revisar margin/gap/padding entre componentes do jogo (cards, seções de ação, blocos do dia, botões)
+
 
 ## Concluído
 

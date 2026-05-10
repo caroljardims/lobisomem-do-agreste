@@ -201,10 +201,12 @@ export function resolveDawn(input: DawnResolveInput): DawnResolveResult {
   const del = getAction(input.nightActions, "delegado", input.players);
   if (del?.action.targetId && players[del.action.targetId]) {
     const t = players[del.action.targetId];
-    let label = alignmentLabel(ROLE_SIDE[t.role]);
-    if (t.role === "curupira") label = invertAlignment(label);
     t.jailed = true;
-    pushPrivate(del.playerId, `Prisão: ${t.name} é ${label}.`);
+    const reason = del.action.specialAction?.trim();
+    const msg = reason
+      ? `O Delegado ordenou a prisão de ${t.name}. Motivo: ${reason}.`
+      : `O Delegado ordenou a prisão de ${t.name}.`;
+    publicLog.push({ round: input.round, type: "special", message: msg, timestamp: input.now });
   }
 
   const geni = getAction(input.nightActions, "geni", input.players);
