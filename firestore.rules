@@ -1,0 +1,21 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAuthed() {
+      return request.auth != null;
+    }
+
+    // All writes go through Cloud Functions (Admin SDK, bypasses rules).
+    // Clients are read-only. Any authenticated user can read any room they
+    // know the code for — codes are short-lived and unguessable in practice.
+    match /rooms/{roomCode} {
+      allow read: if isAuthed();
+      allow write: if false;
+
+      match /{document=**} {
+        allow read: if isAuthed();
+        allow write: if false;
+      }
+    }
+  }
+}

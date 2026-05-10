@@ -1,0 +1,24 @@
+{
+  "name": "functions",
+  "private": true,
+  "main": "lib/index.js",
+  "type": "module",
+  "engines": {
+    "node": "20"
+  },
+  "scripts": {
+    "build": "npm --prefix .. run build -w folclore-game-engine && node esbuild.mjs",
+    "typecheck": "tsc --noEmit",
+    "serve": "npm run build && firebase emulators:start --only functions"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "firebase-functions": "^6.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "esbuild": "^0.24.0",
+    "folclore-game-engine": "file:../packages/game-engine",
+    "typescript": "^5.6.3"
+  }
+}

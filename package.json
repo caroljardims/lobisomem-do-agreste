@@ -1,0 +1,18 @@
+{
+  "name": "folclore-oculto",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "functions"
+  ],
+  "scripts": {
+    "build": "npm run build -w folclore-game-engine && npm run build -w web && npm run build -w functions",
+    "test": "npm run test -w folclore-game-engine",
+    "emulators": "firebase emulators:start --only auth,firestore,functions,hosting",
+    "dev": "npm run dev -w web"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
