@@ -23,13 +23,28 @@ packages/
 
 ## Desenvolvimento local
 
-**Pré-requisitos:** Node >= 20, Firebase CLI
+**Pré-requisitos:** Node >= 20, Java (para o emulador do Firestore), Firebase CLI
 
 ```bash
 npm install
-npm run emulators   # inicia Auth, Firestore, Functions e Hosting localmente
-npm run dev         # frontend em modo dev (em outro terminal)
 ```
+
+**Terminal 1 — emuladores Firebase** (Auth · Firestore · Functions · Hosting):
+
+```bash
+firebase emulators:start
+```
+
+Aguarde a mensagem `All emulators ready` antes de abrir o frontend.
+
+**Terminal 2 — frontend com hot reload:**
+
+```bash
+cd apps/web
+VITE_USE_EMULATORS=1 npm run dev
+```
+
+Acesse a URL exibida pelo Vite (ex: `http://localhost:5175`). Os emuladores precisam estar rodando para o login funcionar — sem eles você verá `auth/network-request-failed`.
 
 ## Build e deploy
 

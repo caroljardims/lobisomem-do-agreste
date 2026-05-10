@@ -10,7 +10,7 @@ export function maxRoundsForPlayerCount(n: number): number {
 
 const TOWN_5 = ["delegado", "doutor"] as const satisfies readonly RoleId[];
 const TOWN_7 = ["delegado", "doutor", "cartomante"] as const satisfies readonly RoleId[];
-const TOWN_9_11 = ["delegado", "doutor", "cartomante", "coronel"] as const satisfies readonly RoleId[];
+const TOWN_9_11 = ["delegado", "doutor", "cartomante", "coronel", "boitata"] as const satisfies readonly RoleId[];
 const TOWN_12: RoleId[] = [
   "delegado",
   "doutor",
@@ -112,7 +112,7 @@ export function buildResolvedRoles(n: number, rng: () => number): RoleId[] {
     const aldeoes = n - 9;
     const ald: RoleId[] = Array.from({ length: aldeoes }, () => "aldeao");
     for (let k = 0; k < 200; k++) {
-      const creatures = pickDistinct([...CREATURE_ROLES], 3, rng);
+      const creatures = pickDistinct([...CREATURE_ROLES], 2, rng);
       const neutrals = neutralsFor9To11(rng);
       const roles = [...TOWN_9_11, ...ald, ...creatures, ...neutrals];
       if (validateRoleComposition(roles)) return roles;

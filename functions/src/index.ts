@@ -216,6 +216,13 @@ export const submitNightAction = onCall(async (req) => {
     specialAction,
   };
 
+  if (mySecret.role === "mae_de_santo" && targetId) {
+    const target = players.find((p) => p.id === targetId);
+    if (!target || !target.eliminated || target.expelled) {
+      throw new HttpsError("invalid-argument", "Mãe de Santo só pode invocar jogadores eliminados (não expulsos).");
+    }
+  }
+
   const v = validateNightAction(
     {
       round: Number(room.round ?? 1),
@@ -297,15 +304,13 @@ export const submitVote = onCall(async (req) => {
     { merge: true },
   );
 
-  // Check if all eligible voters have now voted
-  const voteSnap = await roomRef.collection("votes").doc(String(round)).get();
-  const currentVotes = voteSnap.data() ?? {};
-  const eligible = players.filter(
-    (p) => p.alive !== false && !p.eliminated && !p.expelled && !p.seduced && !p.jailed,
-  );
-  if (eligible.length > 0 && eligible.every((p) => p.id in currentVotes)) {
-    await finalizeDay(code, round);
-  }
+  await roomRef.collection("chat").add({
+    playerId: me.id,
+    name: me.name,
+    type: "vote",
+    text: `${String(me.name)} votou.`,
+    createdAt: FieldValue.serverTimestamp(),
+  });
 
   return { ok: true };
 });
@@ -325,6 +330,8 @@ export const sendChatMessage = onCall(async (req) => {
   const me = players.find((p) => p.uid === uid);
   if (!me) throw new HttpsError("permission-denied", "Fora da sala.");
   if (me.silenced) throw new HttpsError("failed-precondition", "Silenciado.");
+  const isDead = me.alive === false || Boolean(me.eliminated) || Boolean(me.expelled);
+  if (isDead && !me.invoked) throw new HttpsError("failed-precondition", "Você não pode falar.");
 
   await roomRef.collection("chat").add({
     playerId: me.id,
@@ -348,11 +355,17 @@ export const brasContinueChoice = onCall(async (req) => {
   if (!me || secrets[me.id]?.role !== "bras_cubas") throw new HttpsError("permission-denied", "Apenas Brás Cubas.");
 
   if (endGame) {
+    const revealedRoles: Record<string, string> = {};
+    for (const p of players) {
+      const r = secrets[p.id]?.role;
+      if (r) revealedRoles[p.id] = r;
+    }
     await roomRef.update({
       status: "ended",
       phase: "ended",
       winner: me.id,
       pendingBrasChoice: false,
+      revealedRoles,
     });
   } else {
     await roomRef.collection("secrets").doc(me.id).update({ role: "aldeao", side: ROLE_SIDE["aldeao"] });
@@ -567,6 +580,23 @@ export const markSaciGorroOffer = onCall(async (req) => {
   return { ok: true };
 });
 
+export const advanceDay = onCall(async (req) => {
+  const uid = requireAuth(req);
+  const code = String(req.data?.roomCode ?? "").toUpperCase().trim();
+  if (!code) throw new HttpsError("invalid-argument", "Código inválido.");
+
+  const roomRef = db.collection("rooms").doc(code);
+  const roomSnap = await roomRef.get();
+  if (!roomSnap.exists) throw new HttpsError("not-found", "Sala não encontrada.");
+  const room = roomSnap.data()!;
+  if (room.hostUid !== uid) throw new HttpsError("permission-denied", "Apenas o anfitrião pode encerrar o dia.");
+  if (room.status !== "day") throw new HttpsError("failed-precondition", "Não é fase do dia.");
+
+  const round = Number(room.votesRound ?? room.round ?? 1);
+  await finalizeDay(code, round);
+  return { ok: true };
+});
+
 export const restartGame = onCall(async (req) => {
   const uid = requireAuth(req);
   const code = String(req.data?.roomCode ?? "").toUpperCase().trim();
@@ -625,6 +655,7 @@ export const restartGame = onCall(async (req) => {
     geniInvestigatedTargets: [],
     pendingBrasChoice: false,
     pendingSaciGorro: false,
+    revealedRoles: {},
   });
 
   await batch.commit();

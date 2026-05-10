@@ -204,6 +204,33 @@ export async function finalizeNight(roomCode: string, round: number) {
 
   // Auto-vote for bots now that day has started
   const botIds = new Set(players.filter((p) => Boolean(p.isBot)).map((p) => p.id));
+
+  // Bot chat message at dawn
+  const BOT_PHRASES = [
+    "Não dormiu bem essa noite não, não…",
+    "Tem coisa estranha acontecendo por aqui.",
+    "Eu não sei de nada, mas suspeito de tudo.",
+    "Essa noite tava silenciosa demais pra ser inocente.",
+    "Alguém aqui sabe mais do que tá mostrando.",
+    "Vou ficar de olho em todo mundo hoje.",
+    "Se ficar quieto parece suspeito. Se falar parece suspeito. Que dilema.",
+    "O sertão não perdoa quem acredita demais.",
+    "Cuidado com quem sorri muito de manhã.",
+    "Mais uma noite que passou. Será que vai ter mais uma?",
+  ];
+  const botPlayers = Object.values(res.players).filter(
+    (p) => p.alive && !p.eliminated && !p.expelled && !p.silenced && botIds.has(p.id),
+  );
+  if (botPlayers.length > 0) {
+    const chatBot = botPlayers[Math.floor(Math.random() * botPlayers.length)];
+    const phrase = BOT_PHRASES[Math.floor(Math.random() * BOT_PHRASES.length)];
+    await roomRef.collection("chat").add({
+      playerId: chatBot.id,
+      name: chatBot.name,
+      text: phrase,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+  }
   if (botIds.size > 0) {
     const aliveNow = Object.values(res.players).filter((p) => p.alive && !p.eliminated && !p.expelled);
     const aliveHumans = aliveNow.filter((p) => !botIds.has(p.id));
@@ -218,11 +245,6 @@ export async function finalizeNight(roomCode: string, round: number) {
         { ...botVotes, updatedAt: FieldValue.serverTimestamp() },
         { merge: true },
       );
-    }
-    // If all eligible voters are bots (all just voted), finalize day immediately
-    const eligible = aliveNow.filter((p) => !p.seduced && !p.jailed);
-    if (eligible.length > 0 && eligible.every((p) => botIds.has(p.id))) {
-      await finalizeDay(roomCode, round);
     }
   }
 }
@@ -308,7 +330,12 @@ export async function finalizeDay(roomCode: string, round: number) {
   }
   const w = checkCollectiveWin(winPlayers, round, Number(room.maxRounds ?? 7));
   if (w) {
-    await roomRef.update({ status: "ended", phase: "ended", winner: w, votingOpen: false });
+    const revealedRoles: Record<string, string> = {};
+    for (const p of snaps) {
+      const r = sec[p.id]?.role;
+      if (r) revealedRoles[p.id] = r;
+    }
+    await roomRef.update({ status: "ended", phase: "ended", winner: w, votingOpen: false, revealedRoles });
   } else {
     const nextRound = round + 1;
     await startNightSequence(roomCode, nextRound);
@@ -347,7 +374,7 @@ export async function processBotNightActions(roomCode: string, round: number): P
   if (botIds.size === 0) return;
 
   const alive = players.filter((p) => p.alive !== false && !p.eliminated && !p.expelled);
-  const eliminated = players.filter((p) => p.eliminated || p.expelled);
+  const eliminated = players.filter((p) => p.eliminated && !p.expelled);
 
   const nightRef = roomRef.collection("nightActions").doc(String(round));
   const remainingPending: RoleId[] = [];

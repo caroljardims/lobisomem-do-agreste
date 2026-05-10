@@ -917,8 +917,12 @@ input::placeholder {
   text-transform: uppercase;
   color: var(--ink-faint);
   display: block;
-  margin-top: 8px;
+  margin-top: 4px;
   margin-bottom: 4px;
+}
+
+.game-card label:first-child {
+  margin-top: 0;
 }
 
 .game-card select,
@@ -1012,6 +1016,11 @@ input::placeholder {
   border-color: var(--line-strong);
 }
 
+.day-phase .vote-block select:disabled {
+  opacity: 0.85;
+  cursor: not-allowed;
+}
+
 .day-phase .vote-block button {
   align-self: stretch;
   min-height: 44px;
@@ -1026,6 +1035,14 @@ input::placeholder {
 
 .day-phase .vote-block button:hover:not(:disabled) {
   background: rgba(212, 165, 116, 0.12);
+}
+
+.day-phase .vote-block button.vote-sent:disabled {
+  opacity: 1;
+  cursor: default;
+  border-color: rgba(120, 180, 140, 0.45);
+  background: rgba(80, 140, 100, 0.12);
+  color: var(--ink-bright);
 }
 
 .day-phase .day-actions-row {
@@ -1050,6 +1067,26 @@ input::placeholder {
 .log-card p {
   margin: 3px 0;
   font-size: 13px;
+}
+
+.chat-card {
+  min-height: 160px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.chat-card p {
+  margin: 4px 0;
+  font-size: 13.5px;
+}
+
+/* vote-sent fora do vote-block (botões de ação do dia) */
+.game-card button.vote-sent:disabled {
+  opacity: 1;
+  cursor: default;
+  border-color: rgba(120, 180, 140, 0.45);
+  background: rgba(80, 140, 100, 0.12);
+  color: var(--ink-bright);
 }
 
 .ended-card {

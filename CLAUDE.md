@@ -511,11 +511,19 @@ Sistema verifica após cada amanhecer e após cada expulsão:
 
 
 # To Do
-- Remover do dia as interações que não podem ser executadas pelo player. Ex.: Se eu sou o Coronel, não posso executar Tiro Certo do cangaceiro.
-- Cuidar espaçamento entre os componentes.
-- Em "O que aconteceu esta noite":
-    - Está duplicado para o anfitrião, remover o componente de baixo, permanecer apenas em cima. 
-    - Deve ter um parecer geral do que acontecer somente noite passada. Se ninguém foi eliminado, deve se dizer "ninguém foi eliminado" e assim por diante. Além disso, quem já foi eliminado, expulso ou morto. Isso deve aparecer para todos os players, não apenas ao porta-voz.
-- Personagem que foi expulso ou morreu não pode mais usar o chat. Nesse ponto, ele só pode assistir o jogo acontecendo naturalmente.
-- Personagem que foi expulso não pode voltar à cidade. Personagem que foi morto pode voltar somente quando a mãe de santo chamar, por uma rodada. Nesse caso, ele pode falar tudo o que sabe no chat.
-- Bots podem fazer parte do jogo e podem ser interativos no chat também (com cautela).
+
+## Pendente
+
+- **Espaçamento:** revisar margin/gap/padding entre componentes do jogo (cards, seções de ação, blocos do dia, botões)
+
+## Concluído
+
+- ✓ Botões de ação do dia filtrados por `myRole` — cada jogador só vê as ações do seu personagem (`dayActions.ts`)
+- ✓ Duplicação de log removida do porta-voz — panorama unificado visível a todos
+- ✓ Chat bloqueado para mortos e expulsos — backend rejeita, frontend esconde input; invocados são exceção
+- ✓ Anúncio de voto no chat — `submitVote` grava `{ type: "vote", text: "Fulano votou." }` no chat; exibido em estilo muted no frontend
+- ✓ Regra de retorno — backend bloqueia invocação de jogadores `expelled`; frontend filtra pool para `eliminated && !expelled`; bot idem
+- ✓ Fase do dia — parecer da noite — exibe sempre o bloco; mostra "ninguém foi eliminado" se sem mortes; lista quem está fora do jogo
+- ✓ Feedback dos botões — ações noturnas e do dia têm estado de carregamento e confirmação (✓ Ação registrada); botão fica inativo após envio
+- ✓ Chat — altura e design — `.chat-card` com `min-height: 160px / max-height: 320px`; mensagens de voto em estilo muted menor
+- ✓ Bots interativos no chat — ao início do dia, um bot aleatório envia frase temática do banco de frases (`BOT_PHRASES` em `finalizeNight`)

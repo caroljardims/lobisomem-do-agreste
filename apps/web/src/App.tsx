@@ -27,6 +27,26 @@ const LS_GLYPH = "folclore_glyph";
 
 const AVATAR_GLYPHS = ["☽", "✦", "◆", "❖", "✧", "☆", "★", "◉"];
 
+const ROLE_DISPLAY: Record<string, string> = {
+  lobisomem: "Lobisomem",
+  saci: "Saci Pererê",
+  mula: "Mula sem Cabeça",
+  boto: "Boto Cor-de-Rosa",
+  iara: "Iara",
+  curupira: "Curupira",
+  doutor: "Doutor",
+  mae_de_santo: "Mãe de Santo",
+  geni: "Geni",
+  boitata: "Boitatá",
+  cartomante: "Cartomante",
+  delegado: "Delegado",
+  cangaceiro: "Cangaceiro",
+  bras_cubas: "Brás Cubas",
+  padre: "Padre",
+  coronel: "Coronel",
+  aldeao: "Aldeão",
+};
+
 type View = "intro" | "create" | "join" | "joinName";
 
 type RoomDoc = DocumentData & {
@@ -38,11 +58,13 @@ type RoomDoc = DocumentData & {
   currentActorRole?: string | null;
   nightPendingRoles?: string[];
   votingOpen?: boolean;
+  votesRound?: number;
   pendingBrasChoice?: boolean;
   winner?: string | null;
   daySubPhase?: string;
   pendingSaciGorro?: boolean;
   coronelAccusationTarget?: string;
+  revealedRoles?: Record<string, string>;
 };
 
 type PlayerDoc = DocumentData & {
@@ -57,6 +79,8 @@ type PlayerDoc = DocumentData & {
   wolfBiteUsed?: boolean;
   seduced?: boolean;
   jailed?: boolean;
+  silenced?: boolean;
+  invoked?: boolean;
 };
 
 export function App() {
@@ -74,9 +98,13 @@ export function App() {
   const [chat, setChat] = useState<{ id: string; name?: string; text?: string }[]>([]);
   const [chatText, setChatText] = useState("");
   const [voteTarget, setVoteTarget] = useState<string>("");
+  /** Votos da rodada atual (`votes/{round}`), chaves = playerId (exceto `updatedAt`). */
+  const [dayRoundVotes, setDayRoundVotes] = useState<Record<string, string | null>>({});
   const [nightTarget, setNightTarget] = useState<string>("");
   const [nightAction, setNightAction] = useState("eliminate");
   const [nightSpecialAction, setNightSpecialAction] = useState<string | null>(null);
+  const [nightActionSent, setNightActionSent] = useState(false);
+  const [dayActionSent, setDayActionSent] = useState<string | null>(null);
 
   // Entry flow
   const [view, setView] = useState<View>("intro");
@@ -143,6 +171,39 @@ export function App() {
     );
   }, [roomCode, room?.status]);
 
+  useEffect(() => {
+    if (!roomCode || !room || room.status !== "day") {
+      setDayRoundVotes({});
+      return;
+    }
+    const round = String(Number(room.votesRound ?? room.round ?? 1));
+    return onSnapshot(doc(db, "rooms", roomCode, "votes", round), (snap) => {
+      const raw = snap.data() as Record<string, unknown> | undefined;
+      if (!raw) {
+        setDayRoundVotes({});
+        return;
+      }
+      const next: Record<string, string | null> = {};
+      for (const [k, v] of Object.entries(raw)) {
+        if (k === "updatedAt") continue;
+        next[k] = v == null || v === undefined ? null : String(v);
+      }
+      setDayRoundVotes(next);
+    });
+  }, [roomCode, room?.status, room?.votesRound, room?.round]);
+
+  useEffect(() => {
+    if (room?.status !== "day") return;
+    setVoteTarget("");
+  }, [roomCode, room?.votesRound, room?.round, room?.status]);
+
+  // Sync local stepper with Firestore whenever the room doc changes
+  useEffect(() => {
+    if (room?.expectedPlayerCount) {
+      setExpected(Number(room.expectedPlayerCount));
+    }
+  }, [room?.expectedPlayerCount]);
+
   // Auto-advance join view when all 4 cells filled
   useEffect(() => {
     if (view === "join" && joinCodeArr.every((c) => c.length === 1)) {
@@ -158,7 +219,6 @@ export function App() {
   }, [view]);
 
   const isHost = !!(room?.hostUid && uid === room.hostUid);
-  const isSpokesperson = room?.spokespersonId === playerId;
 
   const run = useCallback(async (fnName: string, data: Record<string, unknown>) => {
     setErr(null);
@@ -245,14 +305,6 @@ export function App() {
 
   const startGame = () => run("startGame", { roomCode });
 
-  const submitNight = () =>
-    run("submitNightAction", {
-      roomCode,
-      action: nightAction,
-      targetId: nightTarget || null,
-      specialAction: nightSpecialAction,
-    });
-
   const ROLE_NIGHT_DESCRIPTION: Record<string, string> = {
     lobisomem:    "Você sai para caçar. Escolha um alvo para eliminar — ou use a mordida para converter (uso único).",
     saci:         "Você rouba a habilidade de alguém esta noite, bloqueando sua ação na próxima.",
@@ -302,7 +354,9 @@ export function App() {
     setNightAction(roleActionOptions[0]?.value ?? "eliminate");
     setNightTarget("");
     setNightSpecialAction(null);
-  }, [myRole, room?.round]);
+    setNightActionSent(false);
+    setDayActionSent(null);
+  }, [myRole, room?.round, room?.status]);
 
   // ── Shared UI fragments ──
 
@@ -597,7 +651,7 @@ export function App() {
   // amHost is set locally the moment createRoom returns, before room doc arrives.
   const effectiveIsHost = isHost || (amHost && !room);
 
-  const canStart = effectiveIsHost && players.length >= 5;
+  const canStart = effectiveIsHost && players.length >= 5 && players.length >= expected;
 
   const hostCta = effectiveIsHost ? (
     <button
@@ -617,7 +671,9 @@ export function App() {
         <span className="btn-sub">
           {canStart
             ? `${players.length} jogadores prontos`
-            : `mínimo 5 · agora ${players.length}`}
+            : players.length < 5
+              ? `mínimo 5 · agora ${players.length}`
+              : `${players.length} de ${room?.expectedPlayerCount ?? 5} — preencha as vagas`}
         </span>
       </div>
       <span className="btn-arrow" aria-hidden>
@@ -762,19 +818,19 @@ export function App() {
                   >
                     atualizar vagas
                   </button>
-                  {players.length < 5 && (
+                  {players.length < Math.min(expected, 10) && (
                     <button
                       type="button"
                       className="chip-btn"
                       disabled={loading}
-                      onClick={() =>
-                        run("addBots", {
-                          roomCode,
-                          count: Math.max(1, 5 - players.length),
-                        })
-                      }
+                      onClick={async () => {
+                        if (Number(room?.expectedPlayerCount) !== expected) {
+                          await run("setExpectedPlayerCount", { roomCode, expectedPlayerCount: expected });
+                        }
+                        await run("addBots", { roomCode, count: Math.max(1, Math.min(expected, 10) - players.length) });
+                      }}
                     >
-                      + preencher com bots
+                      + preencher com bots ({Math.min(expected, 10) - players.length} vagas)
                     </button>
                   )}
                 </div>
@@ -789,24 +845,30 @@ export function App() {
       {room && room.status !== "lobby" && room.status !== "ended" && (
         <div className="game-card">
           <p>
-            Fase: <strong>{room.status}</strong> · Rodada {room.round ?? 1}
+            <strong>
+              {room.status === "day"
+                ? `Dia ${room.round ?? 1}`
+                : room.status === "night"
+                  ? `Noite ${room.round ?? 1}`
+                  : `Rodada ${room.round ?? 1}`}
+            </strong>
           </p>
-          {myRole && <p className="muted">Seu personagem: {myRole}</p>}
+          {myRole && <p className="muted">Seu personagem: {ROLE_DISPLAY[myRole] ?? myRole}</p>}
 
           {room.status === "night" && (() => {
             const myRoleIsPending = !!(myRole && room.nightPendingRoles?.includes(myRole));
             const needsAlignment = (myRole === "curupira" || myRole === "boitata") && room.round === 1;
             const targetPool = myRole === "mae_de_santo"
-              ? players.filter((p) => p.eliminated || p.expelled)
+              ? players.filter((p) => p.eliminated && !p.expelled)
               : players.filter((p) => p.id !== playerId && p.alive !== false && !p.eliminated && !p.expelled);
             const canSubmit = !loading && !!nightTarget && (!needsAlignment || !!nightSpecialAction);
 
             return (
-              <div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                 {myRoleIsPending ? (
                   <>
                     {myRole && ROLE_NIGHT_DESCRIPTION[myRole] && (
-                      <p className="muted" style={{ marginBottom: "0.5rem" }}>
+                      <p className="muted" style={{ margin: 0 }}>
                         {ROLE_NIGHT_DESCRIPTION[myRole]}
                       </p>
                     )}
@@ -837,12 +899,25 @@ export function App() {
                         <option key={p.id} value={p.id}>{p.name}</option>
                       ))}
                     </select>
-                    <button type="button" disabled={!canSubmit} onClick={submitNight}>
-                      Enviar ação
+                    <button
+                      type="button"
+                      disabled={!canSubmit || loading || nightActionSent}
+                      className={nightActionSent ? "vote-sent" : undefined}
+                      style={{ marginTop: "4px" }}
+                      onClick={() =>
+                        run("submitNightAction", {
+                          roomCode,
+                          action: nightAction,
+                          targetId: nightTarget || null,
+                          specialAction: nightSpecialAction,
+                        }).then(() => setNightActionSent(true))
+                      }
+                    >
+                      {loading ? "enviando…" : nightActionSent ? "✓ Ação registrada" : "Enviar ação"}
                     </button>
                   </>
                 ) : (
-                  <p className="muted">
+                  <p className="muted" style={{ margin: 0 }}>
                     {myRole && !["coronel", "padre", "aldeao", "bras_cubas"].includes(myRole)
                       ? "Ação enviada. Aguardando os outros…"
                       : "Você não tem ação noturna. Aguarde o amanhecer."}
@@ -859,56 +934,106 @@ export function App() {
             const dawnEntries = publicLog.filter(
               (e) => e.round === currentRound && nightTypes.includes(e.type ?? ""),
             );
+            const hasDeathOrElimination = dawnEntries.some((e) => e.type === "death");
+            const outOfGame = players.filter((p) => p.alive === false || p.eliminated || p.expelled);
             const canVote =
               myPlayer?.alive !== false &&
               !myPlayer?.eliminated &&
               !myPlayer?.expelled &&
               !myPlayer?.seduced &&
               !myPlayer?.jailed;
+            const hasVoted =
+              Boolean(playerId) && Object.hasOwn(dayRoundVotes, playerId);
+            const eligibleVoters = players.filter(
+              (p) => p.alive !== false && !p.eliminated && !p.expelled && !p.seduced && !p.jailed,
+            );
+            const allVotesIn =
+              eligibleVoters.length > 0 &&
+              eligibleVoters.every((p) => Object.hasOwn(dayRoundVotes, p.id ?? ""));
+            const voteSelectValue = hasVoted
+              ? (dayRoundVotes[playerId] ?? "")
+              : voteTarget;
+            const resolvedVoteTarget =
+              canVote && hasVoted ? (dayRoundVotes[playerId] ?? "") : voteTarget;
 
             return (
               <div className="stack stack--dense day-phase">
-                {dawnEntries.length > 0 && (
-                  <div className="game-card log-card day-section">
-                    <strong>O que aconteceu esta noite</strong>
-                    {dawnEntries.map((e) => (
-                      <p key={e.id}>{e.message}</p>
-                    ))}
-                  </div>
-                )}
                 <div className="game-card log-card day-section">
+                  <strong>O que aconteceu esta noite</strong>
+                  {dawnEntries.filter((e) => e.type !== "dawn").map((e) => (
+                    <p key={e.id}>{e.message}</p>
+                  ))}
+                  {!hasDeathOrElimination && (
+                    <p className="muted">Ninguém foi eliminado esta noite.</p>
+                  )}
+                  {outOfGame.length > 0 && (
+                    <p className="muted" style={{ marginTop: "0.5rem" }}>
+                      Fora do jogo: {outOfGame.map((p) => p.name).join(", ")}
+                    </p>
+                  )}
+                </div>
+                <div className="game-card chat-card day-section">
                   <strong>Chat</strong>
                   {chat.map((m) => (
-                    <p key={m.id}>
-                      <strong>{m.name}:</strong> {m.text}
-                    </p>
+                    (m as { type?: string }).type === "vote" ? (
+                      <p key={m.id} className="muted" style={{ fontSize: "0.8em" }}>
+                        {m.text}
+                      </p>
+                    ) : (
+                      <p key={m.id}>
+                        <strong>{m.name}:</strong> {m.text}
+                      </p>
+                    )
                   ))}
                 </div>
-                <div className="row day-section">
-                  <input
-                    value={chatText}
-                    onChange={(e) => setChatText(e.target.value)}
-                    placeholder="Mensagem…"
-                  />
-                  <button
-                    type="button"
-                    onClick={() =>
-                      run("sendChatMessage", {
-                        roomCode,
-                        text: chatText,
-                      }).then(() => setChatText(""))
-                    }
-                  >
-                    Enviar
-                  </button>
-                </div>
+                {(() => {
+                  const isDead =
+                    myPlayer?.alive === false ||
+                    myPlayer?.eliminated ||
+                    myPlayer?.expelled;
+                  if (isDead && !myPlayer?.invoked) {
+                    return (
+                      <p className="muted day-section">
+                        Você não pode enviar mensagens.
+                      </p>
+                    );
+                  }
+                  if (myPlayer?.silenced) {
+                    return (
+                      <p className="muted day-section">
+                        Você está em silêncio e não pode falar agora.
+                      </p>
+                    );
+                  }
+                  return (
+                    <div className="row day-section">
+                      <input
+                        value={chatText}
+                        onChange={(e) => setChatText(e.target.value)}
+                        placeholder="Mensagem…"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          run("sendChatMessage", {
+                            roomCode,
+                            text: chatText,
+                          }).then(() => setChatText(""))
+                        }
+                      >
+                        Enviar
+                      </button>
+                    </div>
+                  );
+                })()}
                 {!canVote ? (
                   <p className="muted day-section">Você não tem direito a voto nesta rodada.</p>
                 ) : (
                   <div className="day-section vote-block">
                     <label>Seu voto</label>
                     <select
-                      value={voteTarget}
+                      value={voteSelectValue}
+                      disabled={hasVoted || loading}
                       onChange={(e) => setVoteTarget(e.target.value)}
                     >
                       <option value="">Nulo</option>
@@ -928,12 +1053,27 @@ export function App() {
                     </select>
                     <button
                       type="button"
-                      disabled={loading}
+                      className={hasVoted ? "vote-sent" : undefined}
+                      disabled={hasVoted || loading}
                       onClick={() =>
                         run("submitVote", { roomCode, targetId: voteTarget || null })
                       }
                     >
-                      Votar
+                      {hasVoted ? "✓ Voto enviado" : "Votar"}
+                    </button>
+                  </div>
+                )}
+                {isHost && room.votingOpen && (
+                  <div className="day-section vote-block">
+                    <button
+                      type="button"
+                      className={allVotesIn ? "primary-btn" : undefined}
+                      disabled={loading || !allVotesIn}
+                      onClick={() => run("advanceDay", { roomCode })}
+                    >
+                      {allVotesIn
+                        ? "Encerrar dia e contar votos"
+                        : `Aguardando votos — ${eligibleVoters.filter((p) => Object.hasOwn(dayRoundVotes, p.id ?? "")).length} de ${eligibleVoters.length}`}
                     </button>
                   </div>
                 )}
@@ -941,15 +1081,16 @@ export function App() {
                   <div className="row day-actions-row day-section">
                     <button
                       type="button"
-                      disabled={!voteTarget}
+                      disabled={!resolvedVoteTarget || loading || dayActionSent === "coronel"}
+                      className={dayActionSent === "coronel" ? "vote-sent" : undefined}
                       onClick={() =>
                         run("coronelStartAccusation", {
                           roomCode,
-                          targetId: voteTarget,
-                        })
+                          targetId: resolvedVoteTarget,
+                        }).then(() => setDayActionSent("coronel"))
                       }
                     >
-                      Coronel: acusação formal
+                      {loading ? "enviando…" : dayActionSent === "coronel" ? "✓ Acusação iniciada" : "Coronel: acusação formal"}
                     </button>
                   </div>
                 )}
@@ -958,16 +1099,21 @@ export function App() {
                     <span className="muted day-actions-label">Votação da acusação formal</span>
                     <button
                       type="button"
+                      disabled={loading || dayActionSent === "coronel_vote"}
+                      className={dayActionSent === "coronel_vote" ? "vote-sent" : undefined}
                       onClick={() =>
                         run("coronelAccusationVote", { roomCode, yes: true })
+                          .then(() => setDayActionSent("coronel_vote"))
                       }
                     >
-                      Voto sim
+                      {dayActionSent === "coronel_vote" ? "✓ Votado" : "Voto sim"}
                     </button>
                     <button
                       type="button"
+                      disabled={loading || dayActionSent === "coronel_vote"}
                       onClick={() =>
                         run("coronelAccusationVote", { roomCode, yes: false })
+                          .then(() => setDayActionSent("coronel_vote"))
                       }
                     >
                       Voto não
@@ -978,40 +1124,48 @@ export function App() {
                   <div className="row day-actions-row day-section">
                     <button
                       type="button"
-                      disabled={!voteTarget}
+                      disabled={!resolvedVoteTarget || loading || dayActionSent === "tiro"}
+                      className={dayActionSent === "tiro" ? "vote-sent" : undefined}
                       onClick={() =>
                         run("cangaceiroTiroCerto", {
                           roomCode,
-                          targetId: voteTarget,
-                        })
+                          targetId: resolvedVoteTarget,
+                        }).then(() => setDayActionSent("tiro"))
                       }
                     >
-                      Tiro Certo
+                      {loading ? "enviando…" : dayActionSent === "tiro" ? "✓ Tiro disparado" : "Tiro Certo"}
                     </button>
                   </div>
                 )}
                 {(canShowSaciGorroOffer(myRole, room, myPlayer) ||
-                  canShowSaciGorroSwap(myRole, room, myPlayer, voteTarget)) && (
+                  canShowSaciGorroSwap(myRole, room, myPlayer, resolvedVoteTarget)) && (
                   <div className="row day-actions-row day-section">
                     {canShowSaciGorroOffer(myRole, room, myPlayer) && (
                       <button
                         type="button"
-                        onClick={() => run("markSaciGorroOffer", { roomCode })}
+                        disabled={loading || dayActionSent === "gorro_offer"}
+                        className={dayActionSent === "gorro_offer" ? "vote-sent" : undefined}
+                        onClick={() =>
+                          run("markSaciGorroOffer", { roomCode })
+                            .then(() => setDayActionSent("gorro_offer"))
+                        }
                       >
-                        Gorro Vermelho (oferta)
+                        {dayActionSent === "gorro_offer" ? "✓ Oferta ativa" : "Gorro Vermelho (oferta)"}
                       </button>
                     )}
-                    {canShowSaciGorroSwap(myRole, room, myPlayer, voteTarget) && (
+                    {canShowSaciGorroSwap(myRole, room, myPlayer, resolvedVoteTarget) && (
                       <button
                         type="button"
+                        disabled={loading || dayActionSent === "gorro_swap"}
+                        className={dayActionSent === "gorro_swap" ? "vote-sent" : undefined}
                         onClick={() =>
                           run("saciGorroSwap", {
                             roomCode,
-                            swapWithPlayerId: voteTarget,
-                          })
+                            swapWithPlayerId: resolvedVoteTarget,
+                          }).then(() => setDayActionSent("gorro_swap"))
                         }
                       >
-                        Gorro: trocar de lugar
+                        {dayActionSent === "gorro_swap" ? "✓ Troca realizada" : "Gorro: trocar de lugar"}
                       </button>
                     )}
                   </div>
@@ -1044,36 +1198,95 @@ export function App() {
         </div>
       )}
 
-      {room?.status === "ended" && (
-        <div className="game-card ended-card">
-          <p className="ended-label">Fim de jogo</p>
-          <p className="ended-winner">Vencedor: {String(room.winner)}</p>
-          {isHost && (
-            <button
-              type="button"
-              className="primary-btn"
-              disabled={loading}
-              style={{ marginTop: "1rem" }}
-              onClick={() => run("restartGame", { roomCode })}
-            >
-              <div className="btn-stack">
-                <span className="btn-title">{loading ? "reiniciando…" : "Recomeçar"}</span>
-                <span className="btn-sub">volta ao lobby com os mesmos jogadores</span>
-              </div>
-              <span className="btn-arrow" aria-hidden>→</span>
-            </button>
-          )}
-        </div>
-      )}
+      {room?.status === "ended" && (() => {
+        const winnerLabel =
+          room.winner === "moradores"
+            ? "Os moradores venceram"
+            : room.winner === "criaturas"
+              ? "As criaturas venceram"
+              : (() => {
+                  const wp = players.find((p) => p.id === room.winner);
+                  return wp ? `${wp.name} venceu` : "Fim de jogo";
+                })();
 
-      {isSpokesperson && (
-        <div className="game-card log-card">
-          <strong>Textos públicos (porta-voz)</strong>
-          {publicLog.map((e) => (
-            <p key={e.id}>{e.message}</p>
-          ))}
-        </div>
-      )}
+        const revealed = room.revealedRoles ?? {};
+        const SIDE_LABEL: Record<string, string> = {
+          criatura: "criatura",
+          morador: "morador",
+          neutro: "neutro",
+        };
+        const SIDE_OF_ROLE: Record<string, string> = {
+          lobisomem: "criatura", saci: "criatura", mula: "criatura",
+          boto: "criatura", iara: "criatura",
+          curupira: "morador", doutor: "morador", mae_de_santo: "morador",
+          geni: "morador", boitata: "morador", cartomante: "morador",
+          delegado: "morador", cangaceiro: "morador", padre: "morador",
+          coronel: "morador", aldeao: "morador", bras_cubas: "neutro",
+        };
+
+        const gameLog = publicLog.filter((e) => e.type !== "dawn");
+
+        return (
+          <div className="stack stack--dense">
+            <div className="game-card ended-card">
+              <p className="ended-label">Fim de jogo</p>
+              <p className="ended-winner">{winnerLabel}</p>
+              {isHost && (
+                <button
+                  type="button"
+                  className="primary-btn"
+                  disabled={loading}
+                  style={{ marginTop: "1rem" }}
+                  onClick={() => run("restartGame", { roomCode })}
+                >
+                  <div className="btn-stack">
+                    <span className="btn-title">{loading ? "reiniciando…" : "Recomeçar"}</span>
+                    <span className="btn-sub">volta ao lobby com os mesmos jogadores</span>
+                  </div>
+                  <span className="btn-arrow" aria-hidden>→</span>
+                </button>
+              )}
+            </div>
+
+            <div className="game-card log-card">
+              <strong>Revelação final</strong>
+              {players.map((p) => {
+                const role = revealed[p.id ?? ""];
+                const roleName = role ? (ROLE_DISPLAY[role] ?? role) : "?";
+                const side = role ? SIDE_OF_ROLE[role] : null;
+                return (
+                  <p key={p.id}>
+                    <strong>{p.name}</strong>
+                    {" — "}
+                    {roleName}
+                    {side && (
+                      <span className="muted"> ({SIDE_LABEL[side] ?? side})</span>
+                    )}
+                    {(p.alive === false || p.eliminated || p.expelled) && (
+                      <span className="muted"> · eliminado</span>
+                    )}
+                  </p>
+                );
+              })}
+            </div>
+
+            {gameLog.length > 0 && (
+              <div className="game-card log-card">
+                <strong>O que aconteceu</strong>
+                {gameLog.map((e) => (
+                  <p key={e.id} className={e.type === "special" ? undefined : "muted"}>
+                    <span className="muted" style={{ fontSize: "0.8em", marginRight: "6px" }}>
+                      Noite {e.round}
+                    </span>
+                    {e.message}
+                  </p>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
     </div>
   );
 }
