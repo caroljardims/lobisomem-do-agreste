@@ -2,21 +2,21 @@
 
 ---
 
-## Bacuré do Sertão, interior do Brasil. Ano de 1922.
+## Bucaré do Sertão, interior do Brasil. Ano de 1922.
 
 A cidade não aparece nos mapas importantes. É pequena o suficiente para que todo mundo conheça o nome de todo mundo, e grande o suficiente para que os segredos se acumulem sem lugar pra ir.
 
-Quem manda em Bacuré é o **Coronel Agenor Furtado**. Sempre mandou. Seu pai mandava antes dele, e o pai do pai antes disso. As terras ao redor da cidade têm o sobrenome da família gravado nos mourões de cerca — e o que não tem cerca, o Coronel considera seu também, por direito de costume.
+Quem manda em Bucaré é o **Coronel Agenor Furtado**. Sempre mandou. Seu pai mandava antes dele, e o pai do pai antes disso. As terras ao redor da cidade têm o sobrenome da família gravado nos mourões de cerca — e o que não tem cerca, o Coronel considera seu também, por direito de costume.
 
 O Coronel não é um homem violento. É pior: é um homem paciente. Ele espera. Ele cobra. E quando decide que alguém precisa sair da cidade, aquela pessoa some — não de forma dramática, mas da maneira mais prosaica possível: uma dívida que vence, uma denúncia que aparece, uma votação que dá errado.
 
 O **Delegado Tobias Mourão** é, na prática, o braço do Coronel. Não por maldade — Tobias acredita genuinamente que manter a ordem é manter o Coronel, e manter o Coronel é manter a cidade funcionando. Ele prende quem o Coronel indica, investiga quem o Coronel suspeita, e dorme bem todas as noites porque nunca se perguntou se estava do lado certo.
 
-O **Doutor Ernesto Cavalcante** chegou de fora. Formado no Recife, veio pra Bacuré porque a cidade precisava de médico e ele precisava de um lugar longe dos credores. É competente, cínico, e o único homem na cidade que fala a verdade com regularidade — não por virtude, mas porque a mentira dá trabalho e ele é preguiçoso. Ele salva quem consegue salvar. Quem não consegue, enterra e segue em frente.
+O **Doutor Ernesto Cavalcante** chegou de fora. Formado no Recife, veio pra Bucaré porque a cidade precisava de médico e ele precisava de um lugar longe dos credores. É competente, cínico, e o único homem na cidade que fala a verdade com regularidade — não por virtude, mas porque a mentira dá trabalho e ele é preguiçoso. Ele salva quem consegue salvar. Quem não consegue, enterra e segue em frente.
 
 A **Cartomante Perpétua** lê as cartas há quarenta anos na mesma mesa, no mesmo cômodo, com a mesma toalha bordada. Ela nunca errou uma previsão — ou melhor, ela nunca fez uma previsão que não pudesse ser interpretada como certa depois dos fatos. Perpétua sabe o que as pessoas escondem. Não por dom sobrenatural, mas porque em cidade pequena, segredo que um guarda dois já sabem, e ela ouve muito e fala pouco.
 
-**Maria Conga** chegou a Bacuré vinda de não se sabe onde, instalou seu terreiro na beira do rio e nunca mais saiu. A cidade oficial — o Coronel, o Padre, o Delegado — finge que ela não existe. O povo vai ao terreiro às escondidas, de madrugada, quando a medicina do Doutor não resolve e a fé do Padre não chega.
+**Maria Conga** chegou a Bucaré vinda de não se sabe onde, instalou seu terreiro na beira do rio e nunca mais saiu. A cidade oficial — o Coronel, o Padre, o Delegado — finge que ela não existe. O povo vai ao terreiro às escondidas, de madrugada, quando a medicina do Doutor não resolve e a fé do Padre não chega.
 
 Ela conhece o folclore do sertão melhor do que qualquer criatura conhece a si mesma. O Lobisomem é uma entidade que ela já cruzou nos Pontos — ela sabe o nome dele, e nome é poder.
 
@@ -44,15 +44,15 @@ A **Mula sem Cabeça** não esqueceu o nome do homem que a destruiu.
 
 **Brás Cubas** era o filho mais velho de uma família que já teve dinheiro e agora só tem o sobrenome. Estudou em Olinda, leu todos os livros errados, voltou convencido de que a vida não tem sentido e que a única coisa honesta que um homem pode fazer é reconhecer isso abertamente. A cidade acha que ele é louco. Ele acha que a cidade é que é louca. Nenhum dos dois está completamente errado.
 
-Brás Cubas quer ser expulso de Bacuré por votação pública — não por merecer, mas como ato filosófico. Ser condenado por uma cidade que não o entende seria, na sua visão, a única forma de existência com alguma dignidade. Ele provoca, insinua, acusa — tudo calculado para parecer culpado sem ser.
+Brás Cubas quer ser expulso de Bucaré por votação pública — não por merecer, mas como ato filosófico. Ser condenado por uma cidade que não o entende seria, na sua visão, a única forma de existência com alguma dignidade. Ele provoca, insinua, acusa — tudo calculado para parecer culpado sem ser.
 
-**Geni** era filha de ninguém, criada na casa grande do Coronel desde menina. Aprendeu cedo que não tinha herança nem sobrenome — só o que o próprio corpo e coração podiam oferecer. Virou a mulher mais desejada de Bacuré não por malícia, mas por genuína generosidade. Ela ama de verdade, e a cidade sabe a diferença — mas a trata como se não soubesse.
+**Geni** era filha de ninguém, criada na casa grande do Coronel desde menina. Aprendeu cedo que não tinha herança nem sobrenome — só o que o próprio corpo e coração podiam oferecer. Virou a mulher mais desejada de Bucaré não por malícia, mas por genuína generosidade. Ela ama de verdade, e a cidade sabe a diferença — mas a trata como se não soubesse.
 Trinta anos servindo na casa do Coronel ensinaram que quem serve vê tudo. E quem vê tudo tem poder.
 
-Ninguém sabe o nome verdadeiro dele, do **Cangaceiro**. Apareceu em Bacuré há três anos, vive nas bordas da caatinga, entra na cidade quando quer e some quando precisa. O Delegado finge que não o vê — sabe que não tem bala suficiente pra esse confronto.
+Ninguém sabe o nome verdadeiro dele, do **Cangaceiro**. Apareceu em Bucaré há três anos, vive nas bordas da caatinga, entra na cidade quando quer e some quando precisa. O Delegado finge que não o vê — sabe que não tem bala suficiente pra esse confronto.
 O que o trouxe até aqui foi o rio. Ou melhor, o que o rio levou. Sua irmã desapareceu numa noite de festa ribeirinha, anos atrás. Encontraram o chapéu dela na beira d'água.
 Ele rastreou o folclore do sertão inteiro até chegar num velho pescador às margens do São Francisco — magro, com febre alta, que não ia durar a semana. O velho disse que viu tudo naquela noite. Descreveu uma voz que vinha de baixo d'água e um rosto que não era de gente. Morreu dois dias depois sem falar mais nada com ninguém.
-O Cangaceiro ficou com as palavras do velho. E ficou em Bacuré.
+O Cangaceiro ficou com as palavras do velho. E ficou em Bucaré.
 Dizem que ele é duro como pedra. Mas Geni é a única pessoa da cidade que já o viu rir.
 
 ---
@@ -61,15 +61,15 @@ Dizem que ele é duro como pedra. Mas Geni é a única pessoa da cidade que já 
 
 O **Lobisomem** era um homem antes da maldição. Ninguém sabe exatamente quem — ele mesmo já não tem certeza. A transformação apagou partes da memória junto com a forma humana. O que sobrou é fome e instinto, e uma consciência que aparece nos momentos errados, tarde demais pra mudar o que já foi feito.
 
-O **Saci Pererê** não tem raiva de ninguém em particular. Tem raiva de todo mundo em geral. Bacuré é uma cidade de gente que se leva a sério demais — e ele não aguenta gente que se leva a sério. Ele embaralha as coisas por prazer, por princípio, e porque o caos que deixa pra trás sempre revela algo que a ordem estava escondendo.
+O **Saci Pererê** não tem raiva de ninguém em particular. Tem raiva de todo mundo em geral. Bucaré é uma cidade de gente que se leva a sério demais — e ele não aguenta gente que se leva a sério. Ele embaralha as coisas por prazer, por princípio, e porque o caos que deixa pra trás sempre revela algo que a ordem estava escondendo.
 
 O **Boto Cor-de-Rosa** aparece nas festas com chapéu de palha branca e paletó de linho. Ninguém sabe de onde ele vem. Ele dança bem, fala melhor ainda, e toda vez que aparece, alguém acorda no dia seguinte sem memória da noite anterior. A cidade desconfia, mas ele sempre tem uma história pronta — e as histórias dele são sempre melhores que a verdade.
 
 A **Iara** não veio ao baile. Ela não vai à feira. Ela mora no rio que passa atrás da cidade, e as pessoas que vão buscar água tarde da noite às vezes ouvem uma voz que não é de gente. Os que voltam, voltam distraídos. Os que não voltam, não voltam.
 
-O **Curupira** não quer nada com Bacuré. Ele é da floresta, e a floresta está sendo derrubada pelo Coronel Agenor para plantar mais pasto. O Curupira entrou na cidade porque a floresta está diminuindo e ele com ela. Ele não tem lado — tem território. E qualquer pessoa que ameace o que sobrou do mato vai descobrir o que significa se perder sem bússola numa mata fechada.
+O **Curupira** não quer nada com Bucaré. Ele é da floresta, e a floresta está sendo derrubada pelo Coronel Agenor para plantar mais pasto. O Curupira entrou na cidade porque a floresta está diminuindo e ele com ela. Ele não tem lado — tem território. E qualquer pessoa que ameace o que sobrou do mato vai descobrir o que significa se perder sem bússola numa mata fechada.
 
-O **Boitatá** vigia os campos à noite. Seus muitos olhos — comidos de cadáveres de animais mortos pelos incêndios do Coronel — enxergam tudo no escuro. Ele não gosta de Bacuré. Não gosta do Coronel. Mas também não gosta das criaturas que saem caçando à noite sem necessidade. Ele está aqui porque alguém precisa ver, e ele é o único que enxerga no escuro sem se perder.
+O **Boitatá** vigia os campos à noite. Seus muitos olhos — comidos de cadáveres de animais mortos pelos incêndios do Coronel — enxergam tudo no escuro. Ele não gosta de Bucaré. Não gosta do Coronel. Mas também não gosta das criaturas que saem caçando à noite sem necessidade. Ele está aqui porque alguém precisa ver, e ele é o único que enxerga no escuro sem se perder.
 
 ---
 

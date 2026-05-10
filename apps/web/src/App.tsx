@@ -8,7 +8,14 @@ import {
   query,
   type DocumentData,
 } from "firebase/firestore";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { auth, call, db } from "./firebase.js";
 import {
   canShowCangaceiroTiro,
@@ -48,9 +55,49 @@ const ROLE_DISPLAY: Record<string, string> = {
   aldeao: "Aldeão",
 };
 
-const ROLE_LORE: Record<string, string> = {
-  lobisomem:
-    "Você era um homem antes da maldição. Ninguém sabe exatamente quem — você mesmo já não tem certeza. A transformação apagou partes da memória junto com a forma humana. O que sobrou é fome e instinto, e uma consciência que aparece nos momentos errados, tarde demais pra mudar o que já foi feito.",
+type LoreSection =
+  | { kind: "kv"; title: string; content: ReactNode }
+  | { kind: "aside"; text: string };
+
+type LoreRich = {
+  narrative: string;
+  sections: LoreSection[];
+};
+
+const ROLE_LORE: Record<string, string | LoreRich> = {
+  lobisomem: {
+    narrative:
+      "Você era um homem antes da maldição. Ninguém sabe exatamente quem — você mesmo já não tem certeza. A transformação apagou partes da memória junto com a forma humana. O que sobrou é fome e instinto, e uma consciência que aparece nos momentos errados, tarde demais pra mudar o que já foi feito.",
+    sections: [
+      { kind: "kv", title: "Lado", content: "Criatura" },
+      { kind: "kv", title: "Poder noturno", content: "Elimina um morador por noite." },
+      {
+        kind: "kv",
+        title: "Alcatéia (especial)",
+        content: (
+          <>
+            Em vez de matar, pode <em>morder</em> um morador — ele vira criatura secretamente na próxima
+            noite.
+          </>
+        ),
+      },
+      {
+        kind: "aside",
+        text: "Custo: abre mão da eliminação nessa noite. Uso único por jogo.",
+      },
+      {
+        kind: "kv",
+        title: "Contra-medida",
+        content:
+          "Se o Doutor salvar um morador mordido antes da próxima noite, a licantropia é revertida.",
+      },
+      {
+        kind: "kv",
+        title: "Objetivo",
+        content: "Sobreviver até a 4ª noite sem ser expulso.",
+      },
+    ],
+  },
   saci:
     "Você não tem raiva de ninguém em particular. Tem raiva de todo mundo em geral. Bucaré é uma cidade de gente que se leva a sério demais — e você não aguenta gente que se leva a sério. Você embaralha as coisas por prazer, por princípio, e porque o caos que deixa pra trás sempre revela algo que a ordem estava escondendo.",
   mula:
@@ -84,6 +131,37 @@ const ROLE_LORE: Record<string, string> = {
   aldeao:
     "Você é um morador de Bucaré. Conhece os vizinhos pelo nome, sabe quem deve a quem, e notou que as noites últimas estão diferentes — silenciosas de um jeito que não é natural. Você não tem poderes. Tem olhos abertos e bom senso. Em Bucaré, às vezes é o suficiente.",
 };
+
+function RoleLoreContent({ lore }: { lore: string | LoreRich }) {
+  if (typeof lore === "string") {
+    return (
+      <p className="lore-card__body" style={{ margin: 0 }}>
+        {lore}
+      </p>
+    );
+  }
+  return (
+    <>
+      <p className="lore-card__body lore-card__narrative" style={{ margin: 0 }}>
+        {lore.narrative}
+      </p>
+      <div className="lore-card__extra">
+        {lore.sections.map((block, i) =>
+          block.kind === "aside" ? (
+            <blockquote key={i} className="lore-card__aside">
+              {block.text}
+            </blockquote>
+          ) : (
+            <div key={i} className="lore-card__section">
+              <div className="lore-card__section-title">{block.title}</div>
+              <div className="lore-card__section-body">{block.content}</div>
+            </div>
+          ),
+        )}
+      </div>
+    </>
+  );
+}
 
 type View = "intro" | "create" | "join" | "joinName";
 
@@ -196,6 +274,7 @@ export function App() {
   const [allRoundVotes, setAllRoundVotes] = useState<Record<number, Record<string, string | null>>>({});
   const [allNightActions, setAllNightActions] = useState<Record<number, Record<string, { role?: string; action?: string; targetId?: string | null; specialAction?: string | null }>>>({});
   const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [loreOpen, setLoreOpen] = useState(false);
 
   // Entry flow
   const [view, setView] = useState<View>("intro");
@@ -498,6 +577,10 @@ export function App() {
     setNightActionSent(false);
     setDayActionSent(null);
   }, [myRole, room?.round, room?.status]);
+
+  useEffect(() => {
+    if (room?.round === 1 && room?.status === "night") setLoreOpen(true);
+  }, [room?.round, room?.status]);
 
   // ── Shared UI fragments ──
 
@@ -996,6 +1079,25 @@ export function App() {
           </p>
           {myRole && <p className="muted">Seu personagem: {ROLE_DISPLAY[myRole] ?? myRole}</p>}
 
+          {myRole && ROLE_LORE[myRole] && (
+            <div className="role-story-card">
+              <button
+                type="button"
+                className="role-story-toggle"
+                onClick={() => setLoreOpen((v) => !v)}
+              >
+                <span>História — {ROLE_DISPLAY[myRole] ?? myRole}</span>
+                <span className="role-story-chevron">{loreOpen ? "▲" : "▼"}</span>
+              </button>
+              {loreOpen && (
+                <div className="role-story-body">
+                  <p className="role-story-location">Bucaré do Sertão, 1922.</p>
+                  <RoleLoreContent lore={ROLE_LORE[myRole]} />
+                </div>
+              )}
+            </div>
+          )}
+
           {room.status === "night" && (() => {
             const myRoleIsPending = !!(myRole && room.nightPendingRoles?.includes(myRole));
             const needsAlignment = (myRole === "curupira" || myRole === "boitata") && room.round === 1;
@@ -1007,12 +1109,6 @@ export function App() {
 
             return (
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                {room.round === 1 && myRole && ROLE_LORE[myRole] && (
-                  <div className="game-card lore-card">
-                    <strong className="lore-card__label">Bucaré do Sertão, 1922.</strong>
-                    <p style={{ margin: 0 }}>{ROLE_LORE[myRole]}</p>
-                  </div>
-                )}
                 {myRoleIsPending ? (
                   <>
                     {myRole && ROLE_NIGHT_DESCRIPTION[myRole] && (
@@ -1413,6 +1509,24 @@ export function App() {
 
         return (
           <div className="stack stack--dense">
+            {myRole && ROLE_LORE[myRole] && (
+              <div className="role-story-card">
+                <button
+                  type="button"
+                  className="role-story-toggle"
+                  onClick={() => setLoreOpen((v) => !v)}
+                >
+                  <span>História — {ROLE_DISPLAY[myRole] ?? myRole}</span>
+                  <span className="role-story-chevron">{loreOpen ? "▲" : "▼"}</span>
+                </button>
+                {loreOpen && (
+                  <div className="role-story-body">
+                    <p className="role-story-location">Bucaré do Sertão, 1922.</p>
+                    <RoleLoreContent lore={ROLE_LORE[myRole]} />
+                  </div>
+                )}
+              </div>
+            )}
             <div className="game-card ended-card">
               <p className="ended-label">Fim de jogo</p>
               <p className="ended-winner">{winnerLabel}</p>
@@ -1455,8 +1569,8 @@ export function App() {
               })}
             </div>
 
-            <div className="game-card log-card">
-              <strong>Crônica da partida</strong>
+            <div className="game-card log-card chronicle-card">
+              <strong className="chronicle-title">Crônica da partida</strong>
               {!historyLoaded ? (
                 <p className="muted">Carregando histórico…</p>
               ) : (

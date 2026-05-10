@@ -525,6 +525,12 @@ Sistema verifica após cada amanhecer e após cada expulsão:
 
 ## Pendente
 
+- **Componente colapsável com a história do Personagem:** Em todas as telas o player pode ver a história do seu personagem para lembrar seu papel no role play. Isso pode ficar num componente colapsável no topo da tela pra não ocupar espaço o tempo todo. na primeira noite, ele aparece aberto.
+
+- **Crônica da partida:** pode ficar grande, aumentar a altura para caber mais texto. Pode ter a mesma fonte do folhetim no título e textos.
+
+- **Refatoração dos arquivos grandes:** Projeto não tem arquitetura. Propor modelo escalável para refatoração. Não executar imediatamente.
+
 
 
 ## Concluído

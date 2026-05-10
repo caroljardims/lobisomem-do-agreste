@@ -545,8 +545,8 @@ export const saciGorroSwap = onCall(async (req) => {
 });
 
 const BOT_NAMES = [
-  "Zé das Almas", "Maria Padilha", "Severino", "Benedita", "Chico Brabo",
-  "Antônia Brava", "Raimundo", "Eulália", "Maneca", "Dorinha",
+  "Eustácio", "Muriel", "Severino", "Benedita", "Álvaro",
+  "Dona Chica", "Bentinho", "Gabriela", "Maneca", "Dorinha",
   "Lampião", "Maria Bonita", "Catirina", "Mestre Vital", "Caboclo",
 ];
 
