@@ -400,6 +400,20 @@ export async function processBotNightActions(roomCode: string, round: number): P
     if ((role === "curupira" || role === "boitata") && round === 1) {
       specialAction = Math.random() < 0.5 ? "moradores" : "criaturas";
     }
+    if (role === "delegado" && targetId) {
+      const targetName = alive.find((p) => p.id === targetId)?.name ?? "o suspeito";
+      const motivos = [
+        `${targetName} foi visto rondando a praça depois do toque de recolher.`,
+        `Denúncia anônima aponta ${targetName} como perturbador da ordem pública.`,
+        `${targetName} apresentou comportamento suspeito na última reunião.`,
+        `Ordens do Coronel: ${targetName} precisa ser contido.`,
+        `${targetName} foi flagrado próximo aos celeiros na madrugada.`,
+        `Testemunha ocular viu ${targetName} nas bordas da caatinga à noite.`,
+        `${targetName} descumpriu o toque de recolher por três noites seguidas.`,
+        `Há indícios de que ${targetName} está espalhando boatos contra a ordem.`,
+      ];
+      specialAction = motivos[Math.floor(Math.random() * motivos.length)];
+    }
 
     const submission: NightActionInput = {
       role: role as RoleId,

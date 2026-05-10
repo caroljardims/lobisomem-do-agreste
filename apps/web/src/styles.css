@@ -1064,6 +1064,20 @@ input::placeholder {
   overflow-y: auto;
 }
 
+.folhetim-card {
+  font-family: var(--type-display);
+}
+
+.folhetim-card p {
+  font-size: 22px;
+  margin: 5px 0;
+}
+
+.folhetim-title {
+  font-size: 22px;
+  letter-spacing: 0.04em;
+}
+
 .log-card p {
   margin: 3px 0;
   font-size: 13px;
@@ -1138,6 +1152,52 @@ input::placeholder {
   border-left: 2px solid #c8b97a44;
   padding-left: 8px;
   margin: 4px 0;
+}
+
+.chronicle-round {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line-faint);
+}
+
+.chronicle-round:first-child {
+  margin-top: 6px;
+  padding-top: 0;
+  border-top: none;
+}
+
+.chronicle-phase {
+  font-size: 10px !important;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--gold-deep) !important;
+  margin: 0 0 6px !important;
+}
+
+.chronicle-line {
+  font-size: 13px !important;
+  color: var(--ink-cream) !important;
+  margin: 3px 0 !important;
+}
+
+.chronicle-role {
+  font-size: 11px;
+  color: var(--gold);
+  opacity: 0.8;
+}
+
+.chronicle-arrow {
+  color: var(--gold-deep);
+  margin: 0 2px;
+}
+
+.chronicle-outcome {
+  font-size: 12px !important;
+  color: var(--ink-muted) !important;
+  font-style: italic;
+  margin: 4px 0 2px !important;
+  padding-left: 6px;
+  border-left: 2px solid var(--line-faint);
 }
 
 /* ── Responsive ── */

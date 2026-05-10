@@ -2,6 +2,7 @@ import { signInAnonymously } from "firebase/auth";
 import {
   collection,
   doc,
+  getDoc,
   onSnapshot,
   orderBy,
   query,
@@ -120,6 +121,53 @@ type PlayerDoc = DocumentData & {
   invoked?: boolean;
 };
 
+function describeNightAction(
+  actorName: string,
+  role: string,
+  action: string,
+  targetName: string,
+  specialAction?: string | null,
+): string {
+  switch (role) {
+    case "lobisomem":
+      return action === "bite"
+        ? `${actorName} mordeu ${targetName}`
+        : `${actorName} tentou eliminar ${targetName}`;
+    case "saci":
+      return `${actorName} bloqueou ${targetName} para a próxima noite`;
+    case "mula":
+      return `${actorName} aterrorizou ${targetName}`;
+    case "boto":
+      return `${actorName} enfeitiçou ${targetName}`;
+    case "iara":
+      return action === "eliminate_special"
+        ? `${actorName} usou a Voz Encantadora em ${targetName}`
+        : `${actorName} seduziu ${targetName}`;
+    case "curupira":
+      return `${actorName} protegeu ${targetName}`;
+    case "doutor":
+      return `${actorName} tentou salvar ${targetName}`;
+    case "mae_de_santo":
+      return `${actorName} invocou ${targetName}`;
+    case "geni":
+      return `${actorName} conversou com ${targetName}`;
+    case "boitata":
+      return `${actorName} investigou ${targetName}`;
+    case "cartomante":
+      return `${actorName} investigou ${targetName}`;
+    case "delegado": {
+      const reason = specialAction?.trim();
+      return reason
+        ? `${actorName} prendeu ${targetName} — "${reason}"`
+        : `${actorName} prendeu ${targetName}`;
+    }
+    case "cangaceiro":
+      return `${actorName} consultou ${targetName}`;
+    default:
+      return "";
+  }
+}
+
 export function App() {
   const [uid, setUid] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -143,6 +191,9 @@ export function App() {
   const [nightSpecialAction, setNightSpecialAction] = useState<string | null>(null);
   const [nightActionSent, setNightActionSent] = useState(false);
   const [dayActionSent, setDayActionSent] = useState<string | null>(null);
+  const [allRoundVotes, setAllRoundVotes] = useState<Record<number, Record<string, string | null>>>({});
+  const [allNightActions, setAllNightActions] = useState<Record<number, Record<string, { role?: string; action?: string; targetId?: string | null; specialAction?: string | null }>>>({});
+  const [historyLoaded, setHistoryLoaded] = useState(false);
 
   // Entry flow
   const [view, setView] = useState<View>("intro");
@@ -205,6 +256,45 @@ export function App() {
       setPrivateLog(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
     );
   }, [roomCode, playerId]);
+
+  useEffect(() => {
+    if (room?.status !== "ended" || !roomCode || !room?.round) {
+      setAllRoundVotes({});
+      setAllNightActions({});
+      setHistoryLoaded(false);
+      return;
+    }
+    const totalRounds = Number(room.round);
+    setHistoryLoaded(false);
+    const fetchHistory = async () => {
+      const votesAcc: Record<number, Record<string, string | null>> = {};
+      const actionsAcc: Record<number, Record<string, { role?: string; action?: string; targetId?: string | null; specialAction?: string | null }>> = {};
+      await Promise.all(
+        Array.from({ length: totalRounds }, (_, i) => i + 1).map(async (r) => {
+          const [vSnap, aSnap] = await Promise.all([
+            getDoc(doc(db, "rooms", roomCode, "votes", String(r))),
+            getDoc(doc(db, "rooms", roomCode, "nightActions", String(r))),
+          ]);
+          if (vSnap.exists()) {
+            const raw = vSnap.data() as Record<string, unknown>;
+            const votes: Record<string, string | null> = {};
+            for (const [k, v] of Object.entries(raw)) {
+              if (k === "updatedAt") continue;
+              votes[k] = v == null ? null : String(v);
+            }
+            votesAcc[r] = votes;
+          }
+          if (aSnap.exists()) {
+            actionsAcc[r] = aSnap.data() as Record<string, { role?: string; action?: string; targetId?: string | null; specialAction?: string | null }>;
+          }
+        }),
+      );
+      setAllRoundVotes(votesAcc);
+      setAllNightActions(actionsAcc);
+      setHistoryLoaded(true);
+    };
+    fetchHistory().catch(console.error);
+  }, [room?.status, room?.round, roomCode]);
 
   useEffect(() => {
     if (!roomCode || room?.status !== "day") {
@@ -274,7 +364,7 @@ export function App() {
     setLoading(true);
     try {
       const c = call(fnName);
-      const res = await c(data);
+      const res = await c({ playerId, ...data });
       return res.data as Record<string, unknown>;
     } catch (e: unknown) {
       const msg =
@@ -286,7 +376,7 @@ export function App() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [playerId]);
 
   const createRoom = async () => {
     localStorage.setItem(LS_GLYPH, glyph);
@@ -465,7 +555,7 @@ export function App() {
       return (
         <div className="page">
           <div className="brand-center">
-            <div className="brand-title">Folclore Oculto</div>
+            <div className="brand-title">Lobisomem do Sertão</div>
             <div className="brand-tagline">jogo de identidade social</div>
           </div>
 
@@ -776,7 +866,7 @@ export function App() {
                     onClick={() =>
                       navigator
                         .share?.({
-                          title: "Folclore Oculto",
+                          title: "Lobisomem do Sertão",
                           text: `entra na minha sala: ${roomCode}`,
                         })
                         .catch(() => {})
@@ -1016,7 +1106,7 @@ export function App() {
               (p) => p.alive !== false && !p.eliminated && !p.expelled && !p.seduced && !p.jailed,
             );
             const allVotesIn =
-              eligibleVoters.length > 0 &&
+              eligibleVoters.length === 0 ||
               eligibleVoters.every((p) => Object.hasOwn(dayRoundVotes, p.id ?? ""));
             const voteSelectValue = hasVoted
               ? (dayRoundVotes[playerId] ?? "")
@@ -1026,8 +1116,8 @@ export function App() {
 
             return (
               <div className="stack stack--dense day-phase">
-                <div className="game-card log-card day-section">
-                  <strong>O que aconteceu esta noite</strong>
+                <div className="game-card log-card day-section folhetim-card">
+                  <strong className="folhetim-title">Folhetim de Bacuré</strong>
                   {dawnEntries.filter((e) => e.type !== "dawn").map((e) => (
                     <p key={e.id}>{e.message}</p>
                   ))}
@@ -1272,9 +1362,9 @@ export function App() {
       {room?.status === "ended" && (() => {
         const winnerLabel =
           room.winner === "moradores"
-            ? "Os moradores venceram"
+            ? "Os moradores controlaram as criaturas"
             : room.winner === "criaturas"
-              ? "As criaturas venceram"
+              ? "As criaturas dominaram a cidade dos humanos"
               : (() => {
                   const wp = players.find((p) => p.id === room.winner);
                   return wp ? `${wp.name} venceu` : "Fim de jogo";
@@ -1295,7 +1385,11 @@ export function App() {
           coronel: "morador", aldeao: "morador", bras_cubas: "neutro",
         };
 
-        const gameLog = publicLog.filter((e) => e.type !== "dawn");
+        const totalRounds = Number(room.round ?? 1);
+        const playerNameById: Record<string, string> = {};
+        for (const p of players) {
+          if (p.id) playerNameById[p.id] = p.name ?? p.id;
+        }
 
         return (
           <div className="stack stack--dense">
@@ -1341,19 +1435,68 @@ export function App() {
               })}
             </div>
 
-            {gameLog.length > 0 && (
-              <div className="game-card log-card">
-                <strong>O que aconteceu</strong>
-                {gameLog.map((e) => (
-                  <p key={e.id} className={e.type === "special" ? undefined : "muted"}>
-                    <span className="muted" style={{ fontSize: "0.8em", marginRight: "6px" }}>
-                      Noite {e.round}
-                    </span>
-                    {e.message}
-                  </p>
-                ))}
-              </div>
-            )}
+            <div className="game-card log-card">
+              <strong>Crônica da partida</strong>
+              {!historyLoaded ? (
+                <p className="muted">Carregando histórico…</p>
+              ) : (
+                Array.from({ length: totalRounds }, (_, i) => i + 1).map((r) => {
+                  const nightActions = allNightActions[r] ?? {};
+                  const roundVotes = allRoundVotes[r] ?? {};
+                  const nightPublicEntries = publicLog.filter(
+                    (e) => e.round === r && ["death", "bite", "terror", "invocation", "special"].includes(e.type ?? ""),
+                  );
+                  const dayPublicEntries = publicLog.filter(
+                    (e) => e.round === r && e.type === "expulsion",
+                  );
+                  const hasVotes = Object.keys(roundVotes).length > 0;
+                  const actionLines = Object.entries(nightActions).flatMap(([pid, act]) => {
+                    if (!act.targetId) return [];
+                    const actorName = playerNameById[pid] ?? pid;
+                    const targetName = playerNameById[act.targetId] ?? act.targetId;
+                    const desc = describeNightAction(actorName, act.role ?? "", act.action ?? "", targetName, act.specialAction);
+                    if (!desc) return [];
+                    return [{ pid, role: act.role ?? "", desc }];
+                  });
+
+                  return (
+                    <div key={r} className="chronicle-round">
+                      <p className="chronicle-phase">Noite {r}</p>
+                      {actionLines.length === 0 && nightPublicEntries.length === 0 && (
+                        <p className="muted chronicle-line">Sem registros.</p>
+                      )}
+                      {actionLines.map(({ pid, role, desc }) => (
+                        <p key={pid} className="chronicle-line">
+                          <span className="chronicle-role">{ROLE_DISPLAY[role] ?? role}</span>
+                          {" · "}
+                          {desc}
+                        </p>
+                      ))}
+                      {nightPublicEntries.map((e) => (
+                        <p key={e.id} className="chronicle-outcome">{e.message}</p>
+                      ))}
+                      {hasVotes && (
+                        <>
+                          <p className="chronicle-phase">Dia {r}</p>
+                          {Object.entries(roundVotes).map(([voterId, targetId]) => {
+                            const voterName = playerNameById[voterId] ?? voterId;
+                            const targetName = targetId ? (playerNameById[targetId] ?? targetId) : "voto nulo";
+                            return (
+                              <p key={voterId} className="chronicle-line">
+                                {voterName} <span className="chronicle-arrow">→</span> {targetName}
+                              </p>
+                            );
+                          })}
+                          {dayPublicEntries.map((e) => (
+                            <p key={e.id} className="chronicle-outcome">{e.message}</p>
+                          ))}
+                        </>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
         );
       })()}

@@ -53,7 +53,15 @@ export function resolveDawn(input: DawnResolveInput): DawnResolveResult {
   for (const [id, p] of Object.entries(input.players)) {
     players[id] = clonePlayer(p);
     players[id].id = id;
+    // Reset per-round status effects — re-applied below only if this night's actions set them
     players[id].protected = false;
+    players[id].seduced = false;
+    players[id].jailed = false;
+    players[id].enchanted = false;
+    players[id].blockedNextNight = false;
+    players[id].invoked = false;
+    players[id].silenced = false;
+    players[id].silencedRounds = 0;
   }
 
   const publicLog: PublicLogEntry[] = [];

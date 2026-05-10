@@ -28,6 +28,19 @@ function requireAuth(req: CallableRequest): string {
   return req.auth.uid;
 }
 
+type AnyPlayer = Record<string, unknown> & { id: string; uid: string };
+
+/** Lookup by playerId (sent from frontend localStorage) with uid as fallback. */
+function findPlayer(players: AnyPlayer[], req: CallableRequest): AnyPlayer | undefined {
+  const pid = String(req.data?.playerId ?? "");
+  if (pid) {
+    const byId = players.find((p) => p.id === pid && !p.isBot);
+    if (byId) return byId;
+  }
+  const uid = req.auth?.uid;
+  return uid ? findPlayer(players, req) : undefined;
+}
+
 export const createRoom = onCall(async (req) => {
   const uid = requireAuth(req);
   const name = String(req.data?.name ?? "Anfitrião").slice(0, 40);
@@ -184,7 +197,7 @@ export const startGame = onCall(async (req) => {
 });
 
 export const submitNightAction = onCall(async (req) => {
-  const uid = requireAuth(req);
+  requireAuth(req);
   const code = String(req.data?.roomCode ?? "").toUpperCase().trim();
   const action = String(req.data?.action ?? "");
   const targetId = (req.data?.targetId as string | null) ?? null;
@@ -199,7 +212,7 @@ export const submitNightAction = onCall(async (req) => {
 
   const players = await loadPlayers(code);
   const secrets = await loadSecrets(code);
-  const me = players.find((p) => p.uid === uid);
+  const me = findPlayer(players, req);
   if (!me) throw new HttpsError("permission-denied", "Você não está nesta sala.");
   const mySecret = secrets[me.id];
   if (!mySecret) throw new HttpsError("failed-precondition", "Segredo ausente.");
@@ -284,7 +297,7 @@ export const submitNightAction = onCall(async (req) => {
 });
 
 export const submitVote = onCall(async (req) => {
-  const uid = requireAuth(req);
+  requireAuth(req);
   const code = String(req.data?.roomCode ?? "").toUpperCase().trim();
   const targetId = (req.data?.targetId as string | null) ?? null;
   const roomRef = db.collection("rooms").doc(code);
@@ -294,7 +307,7 @@ export const submitVote = onCall(async (req) => {
   if (room.status !== "day") throw new HttpsError("failed-precondition", "Não é fase do dia.");
 
   const players = await loadPlayers(code);
-  const me = players.find((p) => p.uid === uid);
+  const me = findPlayer(players, req);
   if (!me) throw new HttpsError("permission-denied", "Jogador não encontrado.");
   if (me.seduced || me.jailed || me.alive === false) throw new HttpsError("failed-precondition", "Sem direito a voto.");
 
@@ -316,7 +329,7 @@ export const submitVote = onCall(async (req) => {
 });
 
 export const sendChatMessage = onCall(async (req) => {
-  const uid = requireAuth(req);
+  requireAuth(req);
   const code = String(req.data?.roomCode ?? "").toUpperCase().trim();
   const text = String(req.data?.text ?? "").slice(0, 500);
   if (!code || !text) throw new HttpsError("invalid-argument", "Mensagem inválida.");
@@ -327,7 +340,7 @@ export const sendChatMessage = onCall(async (req) => {
   if (roomSnap.data()!.status !== "day") throw new HttpsError("failed-precondition", "Chat só no dia.");
 
   const players = await loadPlayers(code);
-  const me = players.find((p) => p.uid === uid);
+  const me = findPlayer(players, req);
   if (!me) throw new HttpsError("permission-denied", "Fora da sala.");
   if (me.silenced) throw new HttpsError("failed-precondition", "Silenciado.");
   const isDead = me.alive === false || Boolean(me.eliminated) || Boolean(me.expelled);
@@ -343,7 +356,7 @@ export const sendChatMessage = onCall(async (req) => {
 });
 
 export const brasContinueChoice = onCall(async (req) => {
-  const uid = requireAuth(req);
+  requireAuth(req);
   const code = String(req.data?.roomCode ?? "").toUpperCase().trim();
   const endGame = Boolean(req.data?.endGame);
   const roomRef = db.collection("rooms").doc(code);
@@ -351,7 +364,7 @@ export const brasContinueChoice = onCall(async (req) => {
   if (!roomSnap.exists) throw new HttpsError("not-found", "Sala não encontrada.");
   const players = await loadPlayers(code);
   const secrets = await loadSecrets(code);
-  const me = players.find((p) => p.uid === uid);
+  const me = findPlayer(players, req);
   if (!me || secrets[me.id]?.role !== "bras_cubas") throw new HttpsError("permission-denied", "Apenas Brás Cubas.");
 
   if (endGame) {
@@ -379,7 +392,7 @@ export const brasContinueChoice = onCall(async (req) => {
 });
 
 export const coronelStartAccusation = onCall(async (req) => {
-  const uid = requireAuth(req);
+  requireAuth(req);
   const code = String(req.data?.roomCode ?? "").toUpperCase().trim();
   const targetId = String(req.data?.targetId ?? "");
   const roomRef = db.collection("rooms").doc(code);
@@ -389,7 +402,7 @@ export const coronelStartAccusation = onCall(async (req) => {
 
   const secrets = await loadSecrets(code);
   const players = await loadPlayers(code);
-  const me = players.find((p) => p.uid === uid);
+  const me = findPlayer(players, req);
   if (!me || secrets[me.id]?.role !== "coronel") throw new HttpsError("permission-denied", "Apenas o Coronel.");
 
   await roomRef.update({
@@ -401,7 +414,7 @@ export const coronelStartAccusation = onCall(async (req) => {
 });
 
 export const coronelAccusationVote = onCall(async (req) => {
-  const uid = requireAuth(req);
+  requireAuth(req);
   const code = String(req.data?.roomCode ?? "").toUpperCase().trim();
   const yes = Boolean(req.data?.yes);
   const roomRef = db.collection("rooms").doc(code);
@@ -410,7 +423,7 @@ export const coronelAccusationVote = onCall(async (req) => {
   if (room.daySubPhase !== "coronel_accusation") throw new HttpsError("failed-precondition", "Sem acusação ativa.");
 
   const players = await loadPlayers(code);
-  const me = players.find((p) => p.uid === uid);
+  const me = findPlayer(players, req);
   if (!me) throw new HttpsError("permission-denied", "Fora da sala.");
 
   const votes = { ...(room.coronelVotesYes as Record<string, boolean>) };
@@ -456,13 +469,13 @@ export const coronelAccusationVote = onCall(async (req) => {
 });
 
 export const cangaceiroTiroCerto = onCall(async (req) => {
-  const uid = requireAuth(req);
+  requireAuth(req);
   const code = String(req.data?.roomCode ?? "").toUpperCase().trim();
   const targetId = String(req.data?.targetId ?? "");
   const roomRef = db.collection("rooms").doc(code);
   const players = await loadPlayers(code);
   const secrets = await loadSecrets(code);
-  const me = players.find((p) => p.uid === uid);
+  const me = findPlayer(players, req);
   if (!me || secrets[me.id]?.role !== "cangaceiro") throw new HttpsError("permission-denied", "Apenas Cangaceiro.");
 
   const roomSnap = await roomRef.get();
@@ -509,7 +522,7 @@ export const cangaceiroTiroCerto = onCall(async (req) => {
 });
 
 export const saciGorroSwap = onCall(async (req) => {
-  const uid = requireAuth(req);
+  requireAuth(req);
   const code = String(req.data?.roomCode ?? "").toUpperCase().trim();
   const withId = String(req.data?.swapWithPlayerId ?? "");
   const roomRef = db.collection("rooms").doc(code);
@@ -518,7 +531,7 @@ export const saciGorroSwap = onCall(async (req) => {
 
   const players = await loadPlayers(code);
   const secrets = await loadSecrets(code);
-  const me = players.find((p) => p.uid === uid);
+  const me = findPlayer(players, req);
   if (!me || secrets[me.id]?.role !== "saci") throw new HttpsError("permission-denied", "Apenas Saci.");
 
   const batch = db.batch();
@@ -569,12 +582,12 @@ export const addBots = onCall(async (req) => {
 });
 
 export const markSaciGorroOffer = onCall(async (req) => {
-  const uid = requireAuth(req);
+  requireAuth(req);
   const code = String(req.data?.roomCode ?? "").toUpperCase().trim();
   const roomRef = db.collection("rooms").doc(code);
   const players = await loadPlayers(code);
   const secrets = await loadSecrets(code);
-  const me = players.find((p) => p.uid === uid);
+  const me = findPlayer(players, req);
   if (!me || secrets[me.id]?.role !== "saci") throw new HttpsError("permission-denied", "Apenas Saci.");
   await roomRef.update({ pendingSaciGorro: true });
   return { ok: true };
