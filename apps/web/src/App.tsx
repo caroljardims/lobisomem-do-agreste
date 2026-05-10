@@ -9,6 +9,13 @@ import {
 } from "firebase/firestore";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { auth, call, db } from "./firebase.js";
+import {
+  canShowCangaceiroTiro,
+  canShowCoronelAccusationVotes,
+  canShowCoronelAccuse,
+  canShowSaciGorroOffer,
+  canShowSaciGorroSwap,
+} from "./dayActions.js";
 
 function copyToClipboard(text: string) {
   navigator.clipboard?.writeText(text).catch(() => {});
@@ -33,6 +40,9 @@ type RoomDoc = DocumentData & {
   votingOpen?: boolean;
   pendingBrasChoice?: boolean;
   winner?: string | null;
+  daySubPhase?: string;
+  pendingSaciGorro?: boolean;
+  coronelAccusationTarget?: string;
 };
 
 type PlayerDoc = DocumentData & {
@@ -842,66 +852,60 @@ export function App() {
             );
           })()}
 
-          {room.status === "day" && (
-            <div>
-              {(() => {
-                const currentRound = room.round ?? 1;
-                const nightTypes = ["death", "bite", "terror", "invocation", "dawn", "special"];
-                const dawnEntries = publicLog.filter(
-                  (e) => e.round === currentRound && nightTypes.includes(e.type ?? ""),
-                );
-                if (dawnEntries.length === 0) return null;
-                return (
-                  <div className="game-card log-card" style={{ marginBottom: "0.75rem" }}>
+          {room.status === "day" && (() => {
+            const myPlayer = players.find((p) => p.id === playerId);
+            const currentRound = room.round ?? 1;
+            const nightTypes = ["death", "bite", "terror", "invocation", "dawn", "special"];
+            const dawnEntries = publicLog.filter(
+              (e) => e.round === currentRound && nightTypes.includes(e.type ?? ""),
+            );
+            const canVote =
+              myPlayer?.alive !== false &&
+              !myPlayer?.eliminated &&
+              !myPlayer?.expelled &&
+              !myPlayer?.seduced &&
+              !myPlayer?.jailed;
+
+            return (
+              <div className="stack stack--dense day-phase">
+                {dawnEntries.length > 0 && (
+                  <div className="game-card log-card day-section">
                     <strong>O que aconteceu esta noite</strong>
                     {dawnEntries.map((e) => (
                       <p key={e.id}>{e.message}</p>
                     ))}
                   </div>
-                );
-              })()}
-              <div className="game-card log-card">
-                <strong>Chat</strong>
-                {chat.map((m) => (
-                  <p key={m.id}>
-                    <strong>{m.name}:</strong> {m.text}
-                  </p>
-                ))}
-              </div>
-              <div className="row">
-                <input
-                  value={chatText}
-                  onChange={(e) => setChatText(e.target.value)}
-                  placeholder="Mensagem…"
-                />
-                <button
-                  type="button"
-                  onClick={() =>
-                    run("sendChatMessage", {
-                      roomCode,
-                      text: chatText,
-                    }).then(() => setChatText(""))
-                  }
-                >
-                  Enviar
-                </button>
-              </div>
-              {(() => {
-                const myPlayer = players.find((p) => p.id === playerId);
-                const canVote =
-                  myPlayer?.alive !== false &&
-                  !myPlayer?.eliminated &&
-                  !myPlayer?.expelled &&
-                  !myPlayer?.seduced &&
-                  !myPlayer?.jailed;
-                if (!canVote)
-                  return (
-                    <p className="muted" style={{ marginTop: "0.75rem" }}>
-                      Você não tem direito a voto nesta rodada.
+                )}
+                <div className="game-card log-card day-section">
+                  <strong>Chat</strong>
+                  {chat.map((m) => (
+                    <p key={m.id}>
+                      <strong>{m.name}:</strong> {m.text}
                     </p>
-                  );
-                return (
-                  <div style={{ marginTop: "0.75rem" }}>
+                  ))}
+                </div>
+                <div className="row day-section">
+                  <input
+                    value={chatText}
+                    onChange={(e) => setChatText(e.target.value)}
+                    placeholder="Mensagem…"
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      run("sendChatMessage", {
+                        roomCode,
+                        text: chatText,
+                      }).then(() => setChatText(""))
+                    }
+                  >
+                    Enviar
+                  </button>
+                </div>
+                {!canVote ? (
+                  <p className="muted day-section">Você não tem direito a voto nesta rodada.</p>
+                ) : (
+                  <div className="day-section vote-block">
                     <label>Seu voto</label>
                     <select
                       value={voteTarget}
@@ -932,66 +936,89 @@ export function App() {
                       Votar
                     </button>
                   </div>
-                );
-              })()}
-              <div className="row" style={{ marginTop: "0.75rem" }}>
-                <button
-                  type="button"
-                  onClick={() =>
-                    run("coronelStartAccusation", {
-                      roomCode,
-                      targetId: voteTarget,
-                    })
-                  }
-                >
-                  Coronel: acusação
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    run("coronelAccusationVote", { roomCode, yes: true })
-                  }
-                >
-                  Voto sim
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    run("coronelAccusationVote", { roomCode, yes: false })
-                  }
-                >
-                  Voto não
-                </button>
+                )}
+                {canShowCoronelAccuse(myRole, room, myPlayer) && (
+                  <div className="row day-actions-row day-section">
+                    <button
+                      type="button"
+                      disabled={!voteTarget}
+                      onClick={() =>
+                        run("coronelStartAccusation", {
+                          roomCode,
+                          targetId: voteTarget,
+                        })
+                      }
+                    >
+                      Coronel: acusação formal
+                    </button>
+                  </div>
+                )}
+                {canShowCoronelAccusationVotes(room, myPlayer) && (
+                  <div className="row day-actions-row day-section">
+                    <span className="muted day-actions-label">Votação da acusação formal</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        run("coronelAccusationVote", { roomCode, yes: true })
+                      }
+                    >
+                      Voto sim
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        run("coronelAccusationVote", { roomCode, yes: false })
+                      }
+                    >
+                      Voto não
+                    </button>
+                  </div>
+                )}
+                {canShowCangaceiroTiro(myRole, myPlayer) && (
+                  <div className="row day-actions-row day-section">
+                    <button
+                      type="button"
+                      disabled={!voteTarget}
+                      onClick={() =>
+                        run("cangaceiroTiroCerto", {
+                          roomCode,
+                          targetId: voteTarget,
+                        })
+                      }
+                    >
+                      Tiro Certo
+                    </button>
+                  </div>
+                )}
+                {(canShowSaciGorroOffer(myRole, room, myPlayer) ||
+                  canShowSaciGorroSwap(myRole, room, myPlayer, voteTarget)) && (
+                  <div className="row day-actions-row day-section">
+                    {canShowSaciGorroOffer(myRole, room, myPlayer) && (
+                      <button
+                        type="button"
+                        onClick={() => run("markSaciGorroOffer", { roomCode })}
+                      >
+                        Gorro Vermelho (oferta)
+                      </button>
+                    )}
+                    {canShowSaciGorroSwap(myRole, room, myPlayer, voteTarget) && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          run("saciGorroSwap", {
+                            roomCode,
+                            swapWithPlayerId: voteTarget,
+                          })
+                        }
+                      >
+                        Gorro: trocar de lugar
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
-              <div className="row" style={{ marginTop: "0.5rem" }}>
-                <button
-                  type="button"
-                  onClick={() =>
-                    run("cangaceiroTiroCerto", { roomCode, targetId: voteTarget })
-                  }
-                >
-                  Cangaceiro: Tiro Certo
-                </button>
-                <button
-                  type="button"
-                  onClick={() => run("markSaciGorroOffer", { roomCode })}
-                >
-                  Saci: oferta Gorro
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    run("saciGorroSwap", {
-                      roomCode,
-                      swapWithPlayerId: voteTarget,
-                    })
-                  }
-                >
-                  Saci: trocar com
-                </button>
-              </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
       )}
 

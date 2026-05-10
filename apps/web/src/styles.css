@@ -962,6 +962,86 @@ input::placeholder {
   align-items: center;
 }
 
+/* Layout vertical consistente (fase do dia, formulários) */
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gutter);
+}
+
+.stack--dense {
+  gap: 14px;
+}
+
+.day-phase .day-section {
+  margin: 0;
+}
+
+.day-phase .day-section > label:first-child {
+  margin-top: 0;
+}
+
+/* Bloco de voto (fora de .game-card): ritmo entre select e botão */
+.day-phase .vote-block {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.day-phase .vote-block label {
+  font-family: var(--type-ui);
+  font-size: 10px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin: 0;
+}
+
+.day-phase .vote-block select {
+  width: 100%;
+  background: rgba(212, 165, 116, 0.04);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--ink-bright);
+  font-size: 14px;
+  outline: none;
+}
+
+.day-phase .vote-block select:focus {
+  border-color: var(--line-strong);
+}
+
+.day-phase .vote-block button {
+  align-self: stretch;
+  min-height: 44px;
+  padding: 10px 18px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: rgba(212, 165, 116, 0.06);
+  color: var(--ink-cream);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.day-phase .vote-block button:hover:not(:disabled) {
+  background: rgba(212, 165, 116, 0.12);
+}
+
+.day-phase .day-actions-row {
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.day-phase .day-actions-label {
+  width: 100%;
+  margin-bottom: 4px;
+}
+
+.day-phase .game-card button {
+  min-height: 44px;
+}
+
 .log-card {
   max-height: 200px;
   overflow-y: auto;
