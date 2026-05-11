@@ -1,4 +1,4 @@
-# Lobisomem do Sertão
+# Folhetim de Bucaré
 
 Party game remoto inspirado em Werewolf/Mafia, com personagens do folclore brasileiro. Cada jogador acessa pelo celular e tem uma tela privada. O sistema arbitra todas as ações — um porta-voz lê os textos em voz alta para o grupo.
 

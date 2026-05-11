@@ -1209,7 +1209,7 @@ export function App() {
       return (
         <div className="page">
           <div className="brand-center">
-            <div className="brand-title">Lobisomem do Sertão</div>
+            <div className="brand-title">Folhetim de Bucaré</div>
             <div className="brand-tagline">jogo de identidade social</div>
           </div>
 
@@ -1520,7 +1520,7 @@ export function App() {
                     onClick={() =>
                       navigator
                         .share?.({
-                          title: "Lobisomem do Sertão",
+                          title: "Folhetim de Bucaré",
                           text: `entra na minha sala: ${roomCode}`,
                         })
                         .catch(() => {})

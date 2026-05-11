@@ -1,4 +1,4 @@
-# Lobisomem do Sertão — Histórias dos Personagens
+# Folhetim de Bucaré — Histórias dos Personagens
 
 ---
 

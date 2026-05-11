@@ -1,4 +1,4 @@
-# CLAUDE.md — Lobisomem do Sertão
+# CLAUDE.md — Folhetim de Bucaré
 
 Sistema de party game remoto baseado em turnos. Jogadores acessam via browser no celular. Cada jogador tem tela individual e privada. O sistema processa todas as ações — o porta-voz apenas lê os textos em voz alta.
 
