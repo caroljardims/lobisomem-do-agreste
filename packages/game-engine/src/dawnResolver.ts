@@ -77,37 +77,77 @@ export function resolveDawn(input: DawnResolveInput): DawnResolveResult {
     privateLog[playerId].push(e);
   };
 
+  // --- 1. Compute protected targets (Curupira + Doutor + Geni Charme de Verdade) ---
   const protectedTargets = new Set<string>();
   const cur = getAction(input.nightActions, "curupira", players);
   if (cur?.action.targetId) protectedTargets.add(cur.action.targetId);
   const doc = getAction(input.nightActions, "doutor", players);
   if (doc?.action.targetId) protectedTargets.add(doc.action.targetId);
+  const geniAction = getAction(input.nightActions, "geni", input.players);
+  if (geniAction?.action.action === "charm" && geniAction.action.targetId) {
+    protectedTargets.add(geniAction.action.targetId);
+  }
 
+  // --- 2. Padre — catechize (protection from Mula/Iara this night) ---
+  const padreAction = getAction(input.nightActions, "padre", input.players);
+  const catechizedThisNight = new Set<string>();
+  if (padreAction?.action.targetId && players[padreAction.action.targetId]) {
+    const catTarget = players[padreAction.action.targetId];
+    catTarget.catechized = true;
+    catechizedThisNight.add(padreAction.action.targetId);
+  }
+
+  // --- 3. Saci — block next night (fails if target protected) ---
   const saci = getAction(input.nightActions, "saci", players);
-  if (saci?.action.targetId && players[saci.action.targetId]) {
+  if (saci?.action.targetId && players[saci.action.targetId] && !protectedTargets.has(saci.action.targetId)) {
     players[saci.action.targetId].blockedNextNight = true;
   }
 
+  // --- 4. Mula — terrorize or exorcize (fails if protected or catechized) ---
   const mula = getAction(input.nightActions, "mula", input.players);
-  if (mula?.action.targetId && players[mula.action.targetId]) {
+  if (mula?.action.targetId && players[mula.action.targetId] &&
+      !protectedTargets.has(mula.action.targetId) && !catechizedThisNight.has(mula.action.targetId)) {
     const t = players[mula.action.targetId];
-    t.silenced = true;
-    t.silencedRounds = 1;
-    publicLog.push({
-      round: input.round,
-      type: "terror",
-      message: `${t.name} acorda em pânico. Ficará em silêncio pelos próximos dois minutos.`,
-      timestamp: input.now,
-    });
+    if (mula.action.action === "exorcize") {
+      t.alive = false;
+      t.eliminated = true;
+      publicLog.push({
+        round: input.round,
+        type: "death",
+        message: `A cidade acorda com uma ausência. ${t.name} foi encontrado(a) sem vida. Era ${displayRoleName(t.role)}.`,
+        timestamp: input.now,
+      });
+      if (t.role === "padre") {
+        individualWins.push({
+          playerId: mula.playerId,
+          role: "mula",
+          type: "mula_padre",
+          round: input.round,
+          timestamp: input.now,
+        });
+      }
+    } else {
+      t.silenced = true;
+      t.silencedRounds = 1;
+      publicLog.push({
+        round: input.round,
+        type: "terror",
+        message: `${t.name} acorda em pânico. Ficará em silêncio durante a fase do dia.`,
+        timestamp: input.now,
+      });
+    }
   }
 
+  // --- 5. Boto — enchant (fails if protected) ---
   const boto = getAction(input.nightActions, "boto", input.players);
-  if (boto?.action.targetId && players[boto.action.targetId]) {
+  if (boto?.action.targetId && players[boto.action.targetId] && !protectedTargets.has(boto.action.targetId)) {
     players[boto.action.targetId].enchanted = true;
   }
 
+  // --- 6. Iara — seduce or Voz Encantadora (fails if protected or catechized) ---
   const iara = getAction(input.nightActions, "iara", input.players);
-  if (iara?.action.targetId && players[iara.action.targetId]) {
+  if (iara?.action.targetId && players[iara.action.targetId] &&
+      !protectedTargets.has(iara.action.targetId) && !catechizedThisNight.has(iara.action.targetId)) {
     const t = players[iara.action.targetId];
     if (iara.action.action === "eliminate_special") {
       t.alive = false;
@@ -217,11 +257,11 @@ export function resolveDawn(input: DawnResolveInput): DawnResolveResult {
     publicLog.push({ round: input.round, type: "special", message: msg, timestamp: input.now });
   }
 
-  const geni = getAction(input.nightActions, "geni", input.players);
-  if (geni?.action.targetId && players[geni.action.targetId]) {
-    const t = players[geni.action.targetId];
+  // Geni: converse = investigate; charm = already handled in protectedTargets above
+  if (geniAction?.action.action === "converse" && geniAction.action.targetId && players[geniAction.action.targetId]) {
+    const t = players[geniAction.action.targetId];
     const lab = isCreatureRole(t.role) ? "criatura" : "morador";
-    pushPrivate(geni.playerId, `A conversa revela: ${t.name} é ${lab}.`);
+    pushPrivate(geniAction.playerId, `A conversa revela: ${t.name} é ${lab}.`);
   }
 
   const cang = getAction(input.nightActions, "cangaceiro", players);

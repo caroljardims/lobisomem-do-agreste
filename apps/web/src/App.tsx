@@ -93,8 +93,8 @@ const ROLE_LORE: Record<string, string | LoreRich> = {
       },
       {
         kind: "kv",
-        title: "Objetivo",
-        content: "Sobreviver até a 4ª noite sem ser expulso.",
+        title: "Objetivo individual",
+        content: "Sobreviver até o início da 4ª rodada sem ser expulso. Ao atingir esse marco, vence individualmente — independente do resultado geral da partida.",
       },
     ],
   },
@@ -133,9 +133,23 @@ const ROLE_LORE: Record<string, string | LoreRich> = {
       { kind: "kv", title: "Lado", content: "Criatura" },
       {
         kind: "kv",
-        title: "Poder noturno",
+        title: "Poder noturno — Terror",
         content:
-          "Aterroriza um morador — ele fica em silêncio por 2 minutos no início da fase do dia seguinte.",
+          "Aterroriza um morador — o chat dele fica desabilitado durante toda a fase do dia seguinte.",
+      },
+      {
+        kind: "kv",
+        title: "Exorcismo da Vingança (especial)",
+        content: (
+          <>
+            Uma vez por jogo, em vez de aterrorizar, pode <em>eliminar permanentemente</em> um alvo.
+            Se o alvo for o Padre, vence individualmente naquele mesmo instante.
+          </>
+        ),
+      },
+      {
+        kind: "aside",
+        text: "Custo: uso único por jogo. O Exorcismo falha silenciosamente se o alvo estiver protegido pelo Curupira, Doutor ou Geni.",
       },
       {
         kind: "kv",
@@ -150,7 +164,6 @@ const ROLE_LORE: Record<string, string | LoreRich> = {
           <>
             Na primeira noite, o sistema avisa a Mula em segredo:{" "}
             <em>&quot;o Padre está nessa partida&quot;</em>. Ela sabe que ele existe — mas não quem é.
-            Precisa encontrá-lo e eliminá-lo.
           </>
         ),
       },
@@ -162,11 +175,7 @@ const ROLE_LORE: Record<string, string | LoreRich> = {
         kind: "kv",
         title: "Objetivo",
         content:
-          "Eliminar o Padre. Se conseguir, vence individualmente — independente do resultado geral da partida.",
-      },
-      {
-        kind: "aside",
-        text: "Se o Padre for expulso por votação antes de ser eliminado por ela, o objetivo é cancelado.",
+          "O Padre precisa sair da partida — eliminado pelo Exorcismo da Vingança ou expulso por votação do grupo. Se isso acontecer, vence individualmente — independente do resultado geral da partida.",
       },
     ],
   },
@@ -195,7 +204,7 @@ const ROLE_LORE: Record<string, string | LoreRich> = {
         kind: "kv",
         title: "Objetivo",
         content:
-          "Fazer dois moradores votarem entre si no mesmo turno sem ter enfeitiçado nenhum dos dois naquela rodada.",
+          "Enfeitiçar todos os moradores da partida ao menos uma vez ao longo do jogo. Quando o último morador entrar na lista, vence individualmente — independente do resultado geral da partida.",
       },
     ],
   },
@@ -332,11 +341,24 @@ const ROLE_LORE: Record<string, string | LoreRich> = {
         title: "Poder noturno — Confiança",
         content: (
           <>
-            Escolhe um jogador por noite para <em>&quot;conversar&quot;</em>. Esse jogador fica tão à vontade
-            que acaba revelando mais do que devia — o sistema informa à Geni apenas se ele é criatura ou
-            morador.
+            Escolhe um jogador por noite para <em>&quot;conversar&quot;</em>. O sistema informa à Geni apenas
+            se ele é criatura ou morador.
           </>
         ),
+      },
+      {
+        kind: "kv",
+        title: "Charme de Verdade (especial)",
+        content: (
+          <>
+            Uma vez por jogo, em vez de conversar, pode <em>proteger</em> um jogador de qualquer ação noturna
+            de criatura nessa noite — inclusive sedução da Iara, terror da Mula e enfeitiço do Boto.
+          </>
+        ),
+      },
+      {
+        kind: "aside",
+        text: "Custo: uso único por jogo. O jogador protegido não sabe que foi protegido.",
       },
       {
         kind: "kv",
@@ -348,16 +370,6 @@ const ROLE_LORE: Record<string, string | LoreRich> = {
         kind: "aside",
         text:
           "Na manhã seguinte, ele sabe mais do que qualquer outro jogador. Mas agora tem que decidir o que fazer com isso — e sem trair de onde veio a informação.",
-      },
-      {
-        kind: "kv",
-        title: "Charme de Verdade (especial)",
-        content:
-          "Uma vez por jogo, pode fazer um jogador recusar qualquer ação noturna de outra criatura nessa noite — inclusive sedução da Iara e enfeitiço do Boto. Ele estava com ela.",
-      },
-      {
-        kind: "aside",
-        text: "O jogador protegido não sabe que foi protegido.",
       },
       {
         kind: "kv",
@@ -444,9 +456,9 @@ const ROLE_LORE: Record<string, string | LoreRich> = {
       { kind: "kv", title: "Lado", content: "Morador" },
       {
         kind: "kv",
-        title: "Poder",
+        title: "Poder noturno — Prisão",
         content:
-          "Uma vez por jogo, prende um suspeito — o preso fica sem votar por 1 rodada, mas não é expulso. Pode agir durante a noite: o sistema confirma ao Delegado apenas se a pessoa presa é criatura ou morador.",
+          "Toda noite, pode prender um suspeito com justificativa — o motivo é lido em voz alta pelo porta-voz no amanhecer. O preso fica sem votar no dia seguinte, mas não é expulso. O Delegado não descobre se o alvo é criatura ou morador.",
       },
       {
         kind: "kv",
@@ -564,7 +576,7 @@ const ROLE_LORE: Record<string, string | LoreRich> = {
         kind: "kv",
         title: "Objetivo",
         content:
-          "Ser expulso por votação do grupo antes do fim do jogo. Ao ser expulso, vence imediatamente — independente de quem mais vença na partida.",
+          "Ser expulso por votação do grupo antes do fim do jogo. Ao ser expulso, pode encerrar o jogo com sua vitória — ou escolher qualquer personagem disponível e voltar por mais uma rodada com essa nova identidade.",
       },
       {
         kind: "aside",
@@ -582,19 +594,12 @@ const ROLE_LORE: Record<string, string | LoreRich> = {
         kind: "kv",
         title: "Poder noturno — Catequese",
         content:
-          "Escolhe um jogador para catequizar. Moradores catequizados ficam imunes à sedução da Iara e ao terror da Mula sem Cabeça por uma rodada.",
-      },
-      {
-        kind: "kv",
-        title: "Proteção coletiva",
-        content:
-          "Se catequizar todos os moradores vivos pelo menos uma vez, o grupo inteiro fica imune às ações de Iara e Mula sem Cabeça por uma rodada completa. O sistema anuncia o efeito sem revelar quem é o Padre.",
+          "Escolhe um jogador para catequizar. O alvo fica imune à sedução da Iara e ao terror da Mula nessa mesma noite.",
       },
       {
         kind: "aside",
         text: (
           <>
-            <span aria-hidden="true">📌</span>{" "}
             <strong>O duelo da maldição:</strong> A Mula sem Cabeça sabe que o Padre está na partida. O
             Padre não sabe que é alvo.
           </>
@@ -602,9 +607,9 @@ const ROLE_LORE: Record<string, string | LoreRich> = {
       },
       {
         kind: "kv",
-        title: "Objetivo",
+        title: "Objetivo individual",
         content:
-          "Catequizar todos os moradores vivos pelo menos uma vez e sobreviver até o fim do jogo.",
+          "Catequizar todos os moradores vivos ao menos uma vez ao longo do jogo. Quando o último morador entrar na lista, vence individualmente — independente do resultado geral da partida.",
       },
     ],
   },
@@ -733,10 +738,13 @@ type PlayerDoc = DocumentData & {
   isSpokesperson?: boolean;
   isBot?: boolean;
   wolfBiteUsed?: boolean;
+  mulaExorcizeUsed?: boolean;
+  geniCharmUsed?: boolean;
   seduced?: boolean;
   jailed?: boolean;
   silenced?: boolean;
   invoked?: boolean;
+  individualObjectiveMet?: boolean;
 };
 
 function describeNightAction(
@@ -754,7 +762,9 @@ function describeNightAction(
     case "saci":
       return `${actorName} bloqueou ${targetName} para a próxima noite`;
     case "mula":
-      return `${actorName} aterrorizou ${targetName}`;
+      return action === "exorcize"
+        ? `${actorName} usou o Exorcismo da Vingança em ${targetName}`
+        : `${actorName} aterrorizou ${targetName}`;
     case "boto":
       return `${actorName} enfeitiçou ${targetName}`;
     case "iara":
@@ -768,7 +778,11 @@ function describeNightAction(
     case "mae_de_santo":
       return `${actorName} invocou ${targetName}`;
     case "geni":
-      return `${actorName} conversou com ${targetName}`;
+      return action === "charm"
+        ? `${actorName} usou o Charme de Verdade em ${targetName}`
+        : `${actorName} conversou com ${targetName}`;
+    case "padre":
+      return `${actorName} catequizou ${targetName}`;
     case "boitata":
       return `${actorName} investigou ${targetName}`;
     case "cartomante":
@@ -813,6 +827,7 @@ export function App() {
   const [allNightActions, setAllNightActions] = useState<Record<number, Record<string, { role?: string; action?: string; targetId?: string | null; specialAction?: string | null }>>>({});
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [loreOpen, setLoreOpen] = useState(false);
+  const [brasChosenRole, setBrasChosenRole] = useState("aldeao");
 
   // Entry flow
   const [view, setView] = useState<View>("intro");
@@ -1066,17 +1081,18 @@ export function App() {
   const ROLE_NIGHT_DESCRIPTION: Record<string, string> = {
     lobisomem:    "Você sai para caçar. Escolha um alvo para eliminar — ou use a mordida para converter (uso único).",
     saci:         "Você rouba a habilidade de alguém esta noite, bloqueando sua ação na próxima.",
-    mula:         "Você aterroriza alguém para silenciá-lo durante o dia.",
+    mula:         "Você aterroriza alguém para silenciá-lo no chat durante o dia — ou usa o Exorcismo da Vingança para eliminá-lo permanentemente (uso único).",
     boto:         "Você enfeitiça alguém para que não possa votar contra as criaturas.",
     iara:         "Você seduz alguém para roubar seu voto — ou usa a Voz Encantadora para eliminá-lo (uso único).",
-    curupira:     "Você protege alguém das criaturas esta noite.",
+    curupira:     "Você protege alguém de qualquer ação noturna de criatura esta noite.",
     doutor:       "Você salva alguém de ser eliminado. Não pode repetir o mesmo alvo da noite anterior.",
     mae_de_santo: "Você invoca um jogador já eliminado para retornar por mais um dia.",
-    geni:         "Você conversa com alguém e o sistema revela: morador ou criatura.",
+    geni:         "Você conversa com alguém e o sistema revela: morador ou criatura — ou usa o Charme de Verdade para protegê-lo de qualquer criatura esta noite (uso único).",
     boitata:      "Você investiga alguém para descobrir seu lado.",
     cartomante:   "Você lê o destino de alguém para revelar se é morador ou criatura.",
     delegado:     "Você prende alguém — ele perde o voto no próximo dia. A prisão deve ser justificada e o motivo será lido publicamente.",
     cangaceiro:   "Você consulta se a Geni já investigou seu alvo, preparando o Tiro Certo para o dia.",
+    padre:        "Você catequiza alguém — ele fica imune à sedução da Iara e ao terror da Mula nessa noite.",
   };
 
   const roleActionOptions = useMemo(() => {
@@ -1091,18 +1107,27 @@ export function App() {
       { value: "seduce", label: "seduzir" },
       { value: "eliminate_special", label: "Voz Encantadora (uso único)" },
     ];
+    if (r === "mula") {
+      const opts = [{ value: "terrorize", label: "aterrorizar" }];
+      if (!me?.mulaExorcizeUsed) opts.push({ value: "exorcize", label: "Exorcismo da Vingança (uso único)" });
+      return opts;
+    }
+    if (r === "geni") {
+      const opts = [{ value: "converse", label: "conversar" }];
+      if (!me?.geniCharmUsed) opts.push({ value: "charm", label: "Charme de Verdade (uso único)" });
+      return opts;
+    }
     const single: Record<string, { value: string; label: string }> = {
       saci:       { value: "steal",       label: "roubar habilidade" },
-      mula:       { value: "terrorize",   label: "aterrorizar" },
       boto:       { value: "enchant",     label: "enfeitiçar" },
       curupira:   { value: "protect",     label: "proteger" },
       doutor:     { value: "save",        label: "salvar" },
       mae_de_santo: { value: "invoke",    label: "invocar" },
-      geni:       { value: "converse",    label: "conversar" },
       boitata:    { value: "investigate", label: "investigar" },
       cartomante: { value: "investigate", label: "investigar" },
       delegado:   { value: "jail",        label: "prender" },
       cangaceiro: { value: "query",       label: "consultar" },
+      padre:      { value: "catechize",   label: "catequizar" },
     };
     if (single[r]) return [single[r]];
     return [];
@@ -1712,7 +1737,7 @@ export function App() {
                   </>
                 ) : (
                   <p className="muted" style={{ margin: 0 }}>
-                    {myRole && !["coronel", "padre", "aldeao", "bras_cubas"].includes(myRole)
+                    {myRole && !["coronel", "aldeao", "bras_cubas"].includes(myRole)
                       ? "Ação enviada. Aguardando os outros…"
                       : "Você não tem ação noturna. Aguarde o amanhecer."}
                   </p>
@@ -1991,23 +2016,36 @@ export function App() {
 
       {room?.pendingBrasChoice && myRole === "bras_cubas" && (
         <div className="game-card">
-          <p>Brás Cubas: escolha</p>
+          <p style={{ fontFamily: "var(--type-display)", fontStyle: "italic", color: "var(--gold)", marginBottom: 12 }}>
+            Brás Cubas foi expulso. Qual é a sua escolha?
+          </p>
           <button
             type="button"
-            onClick={() =>
-              run("brasContinueChoice", { roomCode, endGame: true })
-            }
+            onClick={() => run("brasContinueChoice", { roomCode, endGame: true })}
+            style={{ marginBottom: 10 }}
           >
-            Encerrar com vitória
+            Encerrar — vencer agora
           </button>
-          <button
-            type="button"
-            onClick={() =>
-              run("brasContinueChoice", { roomCode, endGame: false })
-            }
-          >
-            Continuar como Aldeão
-          </button>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <label style={{ fontSize: 13, color: "var(--ink-cream)" }}>
+              Ou voltar como:
+            </label>
+            <select
+              value={brasChosenRole}
+              onChange={(e) => setBrasChosenRole(e.target.value)}
+              className="vote-select"
+            >
+              {Object.entries(ROLE_DISPLAY).map(([roleId, label]) => (
+                <option key={roleId} value={roleId}>{label}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => run("brasContinueChoice", { roomCode, endGame: false, chosenRole: brasChosenRole })}
+            >
+              Continuar como {ROLE_DISPLAY[brasChosenRole] ?? brasChosenRole}
+            </button>
+          </div>
         </div>
       )}
 

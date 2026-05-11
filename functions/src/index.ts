@@ -260,6 +260,9 @@ export const submitNightAction = onCall(async (req) => {
       invoked: Boolean(me.invoked),
       doctorLastTargetId: (me.doctorLastTargetId as string | null) ?? null,
       wolfBiteUsed: Boolean(me.wolfBiteUsed),
+      mulaExorcizeUsed: Boolean(me.mulaExorcizeUsed),
+      geniCharmUsed: Boolean(me.geniCharmUsed),
+      catechized: Boolean(me.catechized),
     },
     submission,
   );
@@ -275,9 +278,20 @@ export const submitNightAction = onCall(async (req) => {
     { merge: true },
   );
 
-  if (mySecret.role === "geni" && targetId) {
+  // Only track geniInvestigatedTargets when action is "converse", not "charm"
+  if (mySecret.role === "geni" && targetId && action === "converse") {
     const prev = (room.geniInvestigatedTargets as string[]) ?? [];
-    await roomRef.update({ geniInvestigatedTargets: [...prev, targetId] });
+    if (!prev.includes(targetId)) {
+      await roomRef.update({ geniInvestigatedTargets: [...prev, targetId] });
+    }
+  }
+
+  if (mySecret.role === "geni" && action === "charm") {
+    await roomRef.collection("players").doc(me.id).update({ geniCharmUsed: true });
+  }
+
+  if (mySecret.role === "mula" && action === "exorcize") {
+    await roomRef.collection("players").doc(me.id).update({ mulaExorcizeUsed: true });
   }
 
   if (mySecret.role === "saci") {
@@ -359,6 +373,7 @@ export const brasContinueChoice = onCall(async (req) => {
   requireAuth(req);
   const code = String(req.data?.roomCode ?? "").toUpperCase().trim();
   const endGame = Boolean(req.data?.endGame);
+  const chosenRole = (req.data?.chosenRole as string | null) ?? null;
   const roomRef = db.collection("rooms").doc(code);
   const roomSnap = await roomRef.get();
   if (!roomSnap.exists) throw new HttpsError("not-found", "Sala não encontrada.");
@@ -381,8 +396,13 @@ export const brasContinueChoice = onCall(async (req) => {
       revealedRoles,
     });
   } else {
-    await roomRef.collection("secrets").doc(me.id).update({ role: "aldeao", side: ROLE_SIDE["aldeao"] });
-    await roomRef.collection("players").doc(me.id).update({ alive: true, expelled: false });
+    // Brás Cubas can return as any role present in the game (or aldeao as fallback)
+    const validRoles = Object.keys(ROLE_SIDE) as import("folclore-game-engine").RoleId[];
+    const resolvedRole = (chosenRole && validRoles.includes(chosenRole as import("folclore-game-engine").RoleId))
+      ? (chosenRole as import("folclore-game-engine").RoleId)
+      : "aldeao";
+    await roomRef.collection("secrets").doc(me.id).update({ role: resolvedRole, side: ROLE_SIDE[resolvedRole] });
+    await roomRef.collection("players").doc(me.id).update({ alive: true, expelled: false, mulaExorcizeUsed: false, geniCharmUsed: false, wolfBiteUsed: false, individualObjectiveMet: false });
     await roomRef.update({ pendingBrasChoice: false, votingOpen: false });
     const r = Number(roomSnap.data()!.round ?? 1) + 1;
     await startNightSequence(code, r);
@@ -665,6 +685,9 @@ export const restartGame = onCall(async (req) => {
       invoked: false,
       doctorLastTargetId: null,
       wolfBiteUsed: false,
+      mulaExorcizeUsed: false,
+      geniCharmUsed: false,
+      catechized: false,
       individualObjectiveMet: false,
       isSpokesperson: false,
     });
@@ -687,6 +710,8 @@ export const restartGame = onCall(async (req) => {
     geniInvestigatedTargets: [],
     pendingBrasChoice: false,
     pendingSaciGorro: false,
+    botoEnchantedMoradores: [],
+    padreCatechizedMoradores: [],
     revealedRoles: {},
   });
 

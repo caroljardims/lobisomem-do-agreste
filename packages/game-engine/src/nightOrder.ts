@@ -10,6 +10,7 @@ export const NIGHT_ACTION_ORDER: RoleId[] = [
   "curupira",
   "doutor",
   "mae_de_santo",
+  "padre",
   "geni",
   "boitata",
   "cartomante",

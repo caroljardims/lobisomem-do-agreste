@@ -71,6 +71,9 @@ Em implementações Firestore, preferir **subcoleções** para `publicLog` / `pr
   expelled: boolean,             // expulso por votação
   isSpokesperson: boolean,
   actionUsed: boolean,           // poder especial de uso único já usado
+  wolfBiteUsed: boolean,         // Lobisomem já usou morder nesta partida
+  mulaExorcizeUsed: boolean,     // Mula já usou Exorcismo da Vingança
+  geniCharmUsed: boolean,        // Geni já usou Charme de Verdade
   blockedNextNight: boolean,     // habilidade bloqueada pelo Saci
   silenced: boolean,             // aterrorizado pela Mula (silêncio no dia)
   silencedRounds: number,        // rodadas restantes de silêncio
@@ -217,11 +220,12 @@ Após o sorteio, o sistema envia notificações privadas:
 | 6 | Protetores | Curupira | Protege + alinhamento (1ª noite) |
 | 7 | Protetores | Doutor | Salva |
 | 8 | Protetores | Mãe de Santo | Invoca jogador eliminado |
-| 9 | Geni | Geni | Conversa / obtém identidade |
-| 10 | Informantes | Boitatá | Investiga + alinhamento (1ª noite) |
-| 11 | Informantes | Cartomante | Investiga |
-| 12 | Informantes | Delegado | Prende com justificativa pública |
-| 13 | Informantes | Cangaceiro | Consulta prévia ao Tiro Certo |
+| 9 | Protetores | Padre | Catequiza — imuniza alvo à Iara e Mula |
+| 10 | Geni | Geni | Conversa / obtém identidade / Charme de Verdade |
+| 11 | Informantes | Boitatá | Investiga + alinhamento (1ª noite) |
+| 12 | Informantes | Cartomante | Investiga |
+| 13 | Informantes | Delegado | Prende com justificativa pública |
+| 14 | Informantes | Cangaceiro | Consulta prévia ao Tiro Certo |
 
 ### Comportamento do sistema por personagem
 
@@ -233,38 +237,44 @@ Se um personagem não está na partida ou está morto/expulso, o sistema pula au
 
 **Lobisomem**
 - Opções: selecionar alvo + ação (eliminar ou morder)
-- Morder: uso único por jogo — sistema bloqueia a opção após uso
-- Sistema verifica proteção (Curupira/Doutor) na resolução do amanhecer
+- Morder: uso único por jogo — sistema bloqueia a opção após uso (`wolfBiteUsed: true`)
+- Sistema verifica proteção (Curupira/Doutor/Geni Charme) na resolução do amanhecer
 - Se alvo for Brás Cubas ou Mãe de Santo: sistema registra falha silenciosamente
 - Se alvo for Cangaceiro: sistema registra falha silenciosamente (ele escapou)
+- **Objetivo individual:** sobreviver até o início da rodada 4 sem ser expulso. Sistema verifica em `startNightSequence` ao iniciar a noite 4: se o Lobisomem estiver vivo e não expulso, registra `individualObjectiveMet: true`.
 
 **Saci Pererê**
 - Opções: selecionar alvo para roubo de habilidade
 - Sistema marca `blockedNextNight: true` no alvo
-- Gorro Vermelho: se o Saci for alvo de expulsão no dia, sistema oferece opção de ativar — ele troca de lugar com jogador à sua escolha. Uso único.
+- Gorro Vermelho: se o Saci for alvo de expulsão no dia **ou for preso pelo Delegado**, sistema oferece opção de ativar — ele troca de lugar (identidade secreta) com jogador à sua escolha. Uso único.
 - **Aliança involuntária com Brás Cubas:** se o Saci agiu nessa noite e Brás Cubas receber ao menos um voto no dia seguinte, esse voto conta como dois. Sistema aplica silenciosamente.
 
 **Mula sem Cabeça**
-- Opções: selecionar alvo para aterrorizar
-- Sistema marca `silenced: true` e `silencedRounds: 1` no alvo
+- Opções: selecionar alvo para aterrorizar **ou** usar Exorcismo da Vingança
+- Aterrorizar: sistema marca `silenced: true` no alvo — chat desabilitado durante toda a fase do dia
+- Exorcismo da Vingança: uso único — elimina o alvo permanentemente. Sistema marca `mulaExorcizeUsed: true`. Se alvo for o Padre, registra vitória individual da Mula.
+- Todas as ações da Mula falham silenciosamente se o alvo estiver protegido (Curupira/Doutor/Geni Charme)
 - Sistema é imune ao Lobisomem — se Lobisomem selecionar a Mula, sistema registra falha
-- **Objetivo:** se alvo selecionado for o Padre e a Mula tiver poder de eliminação disponível, sistema processa vitória individual
+- **Objetivo:** Padre sair da partida — eliminado pelo Exorcismo da Vingança da Mula **ou** expulso por votação do grupo. Sistema verifica após cada amanhecer e após cada expulsão.
 
 **Boto Cor-de-Rosa**
 - Opções: selecionar alvo para enfeitiçar
 - Sistema marca `enchanted: true` no alvo — ele não pode votar contra criaturas no próximo dia
+- Ação falha silenciosamente se alvo estiver protegido (Curupira/Doutor/Geni Charme)
 - Chapéu: se alguém solicitar verificação do Boto no dia, sistema confirma apenas "usa chapéu" — não revela se é criatura
+- **Objetivo:** enfeitiçar todos os jogadores de alinhamento morador ao menos uma vez ao longo do jogo. Sistema acumula `botoEnchantedMoradores: string[]` na sala. Quando todos os moradores ativos estão na lista, registra `individualObjectiveMet: true` no Boto.
 
 **Iara**
 - Opções: selecionar alvo + ação (seduzir ou usar Voz Encantadora)
 - Sedução: marca `seduced: true` no alvo — perde o voto
 - Voz Encantadora: elimina o alvo permanentemente. Uso único. Após uso, poder de sedução bloqueado por 2 noites
+- Todas as ações da Iara falham silenciosamente se o alvo estiver protegido (Curupira/Doutor/Geni Charme) ou catequizado pelo Padre
 - **Objetivo:** se alvo da Voz Encantadora for o Delegado, sistema registra vitória individual da Iara
 
 **Curupira**
 - Primeira noite: sistema solicita alinhamento (moradores ou criaturas) antes da ação
 - Opções: selecionar alvo para proteger
-- Sistema marca `protected: true` no alvo
+- Sistema marca `protected: true` no alvo — bloqueia **qualquer** ação noturna de criatura (Lobisomem, Saci, Mula, Boto, Iara) e impede ações do Padre sobre o alvo
 - Pés ao Contrário: se a Cartomante investigar o Curupira, sistema inverte a resposta automaticamente
 - **Objetivo:** sistema contabiliza proteções do lado escolhido
 
@@ -281,9 +291,10 @@ Se um personagem não está na partida ou está morto/expulso, o sistema pula au
 - Sistema é imune ao Lobisomem — se Lobisomem selecionar a Mãe de Santo, sistema registra falha e informa ao Lobisomem que o alvo não pôde ser tocado
 
 **Geni**
-- Opções: selecionar alvo para conversar
-- Sistema responde apenas a ela: morador ou criatura
-- Se alvo for o Cangaceiro (Romance da Caatinga): sistema revela ao Cangaceiro a identidade completa de todos os jogadores que a Geni já investigou até essa rodada
+- Opções: selecionar alvo para **conversar** (investigar) **ou** usar Charme de Verdade (proteger)
+- Conversar: sistema responde apenas a ela — morador ou criatura. Acumula alvo em `geniInvestigatedTargets`
+- Charme de Verdade: uso único — protege o alvo de qualquer ação noturna de criatura nessa noite (adiciona ao conjunto de alvos protegidos, igual a Curupira/Doutor). Sistema marca `geniCharmUsed: true` no jogador. Alvo não sabe que foi protegido.
+- Se alvo da conversa for o Cangaceiro (Romance da Caatinga): sistema revela ao Cangaceiro a identidade completa de todos os jogadores que a Geni já investigou até essa rodada
 - Inimigo secreto: sistema notifica na primeira noite sobre o Boto
 
 **Boitatá**
@@ -306,6 +317,13 @@ Se um personagem não está na partida ou está morto/expulso, o sistema pula au
 - Delegado não descobre se o alvo é morador ou criatura
 - Pode prender toda noite (sem limite de usos)
 
+**Padre**
+- Opções: selecionar alvo para catequizar
+- Sistema marca `catechized: true` no alvo por uma rodada — imune à sedução da Iara e ao terror da Mula nessa noite
+- Ação da Mula falha se alvo estiver catequizado pelo Padre nessa mesma noite (resolvido antes dos atacantes no engine)
+- Acumula alvo em `padreCatechizedMoradores: string[]` na sala (apenas moradores; criaturas não são acumuladas)
+- **Objetivo:** catequizar todos os moradores vivos ao menos uma vez ao longo do jogo. Quando todos os moradores ativos aparecem em `padreCatechizedMoradores`, sistema registra `individualObjectiveMet: true` no Padre.
+
 **Cangaceiro**
 - Opções: consultar alvo ou passar
 - Consulta — sistema verifica:
@@ -320,24 +338,29 @@ Se um personagem não está na partida ou está morto/expulso, o sistema pula au
 
 Após todos agirem, o sistema resolve na seguinte ordem antes de publicar qualquer anúncio:
 
-1. **Saci:** marcar `blockedNextNight` no alvo
-2. **Mula:** marcar `silenced` no alvo
-3. **Boto:** marcar `enchanted` no alvo
-4. **Iara:** processar sedução ou Voz Encantadora
+1. **Computar alvos protegidos:** Curupira + Doutor + Geni Charme de Verdade → conjunto `protectedTargets`
+2. **Padre:** catequizar alvo — marcar `catechized: true`; acumular em `padreCatechizedMoradores` (moradores apenas)
+3. **Saci:** marcar `blockedNextNight` no alvo (falha silenciosa se alvo protegido)
+4. **Mula:** marcar `silenced` no alvo (falha silenciosa se alvo protegido ou catequizado); ou Exorcismo da Vingança — eliminar alvo (falha silenciosa se protegido)
+   - Se Exorcismo no Padre → registrar vitória individual da Mula
+5. **Boto:** marcar `enchanted` no alvo (falha silenciosa se alvo protegido)
+6. **Iara:** processar sedução ou Voz Encantadora (falha silenciosa se alvo protegido ou catequizado)
    - Se Voz Encantadora no Delegado → registrar vitória individual da Iara
-5. **Lobisomem:** verificar proteção do alvo
-   - Alvo protegido (Curupira ou Doutor) → ataque falhou, não anunciar nada
+7. **Lobisomem:** verificar proteção do alvo
+   - Alvo protegido (`protectedTargets`) → ataque falhou, não anunciar nada
    - Alvo não protegido + ação eliminar → morte confirmada
    - Alvo não protegido + ação morder → registrar mordida em segredo
    - Alvo mordido + Doutor salvou → licantropia revertida, não anunciar
-   - Alvo é Brás Cubas, Mãe de Santo ou Cangaceiro → falha silenciosa
-6. **Curupira/Doutor:** proteções já verificadas no passo anterior
-7. **Mãe de Santo:** ativar `invoked` no jogador escolhido
-8. **Boitatá/Cartomante/Cangaceiro:** registrar resultados nos logs privados; **Delegado:** publicar prisão + motivo no log público
-9. **Verificar vitórias individuais:**
-   - Mula eliminou o Padre?
-   - Iara eliminou o Delegado com Voz Encantadora?
-10. **Verificar condições de vitória coletiva**
+   - Alvo é Brás Cubas, Mãe de Santo, Cangaceiro ou Boitatá → falha silenciosa
+8. **Mãe de Santo:** ativar `invoked` no jogador escolhido
+9. **Boitatá/Cartomante/Cangaceiro:** registrar resultados nos logs privados; **Delegado:** publicar prisão + motivo no log público
+   - Se Delegado prendeu o Saci → sistema seta `pendingSaciGorro: true`
+10. **Verificar objetivos individuais:**
+    - Mula usou Exorcismo no Padre → registrar vitória individual da Mula
+    - Iara usou Voz Encantadora no Delegado → registrar vitória individual da Iara
+    - Boto enfeitiçou todos os moradores → registrar vitória individual do Boto
+    - Padre catequizou todos os moradores vivos → registrar vitória individual do Padre
+11. **Verificar condições de vitória coletiva**
 
 ### Anúncios públicos do amanhecer
 
@@ -403,7 +426,7 @@ Sistema registra a expulsão e exibe no Folhetim. Anfitrião vê botão "Toque d
 | Qualquer jogador | *"A cidade votou pela expulsão de: [Nome]."* |
 | Brás Cubas | *"Espera. [Nome] sorri. Era o Tolo — e ser expulso era exatamente o que queria."* |
 
-Se Brás Cubas for expulso: sistema oferece escolha a ele — encerrar o jogo com sua vitória ou continuar como Aldeão por mais uma rodada.
+Se Brás Cubas for expulso: sistema oferece escolha a ele — encerrar o jogo com sua vitória ou continuar como **qualquer personagem disponível no jogo** por mais uma rodada (o jogador seleciona o personagem desejado via UI; sistema troca o segredo na subcoleção `secrets`).
 
 ### Cangaceiro — Tiro Certo
 
@@ -430,9 +453,12 @@ Sistema verifica após cada amanhecer e após cada expulsão:
 | Todas as criaturas cumpriram objetivos individuais | Criaturas |
 | Rodada atual > maxRounds (lua cheia) | Criaturas |
 | Brás Cubas expulso por votação (e opta por encerrar) | Brás Cubas |
-| Mula elimina o Padre | Mula vence individualmente — jogo continua |
+| Padre sai da partida (Exorcismo da Mula **ou** expulsão por voto) | Mula vence individualmente — jogo continua |
 | Iara elimina o Delegado com Voz Encantadora | Iara vence individualmente — jogo continua |
 | Cangaceiro usa Tiro Certo na Iara | Cangaceiro vence individualmente — jogo continua |
+| Lobisomem chega vivo e não expulso ao início da rodada 4 | Lobisomem vence individualmente — jogo continua |
+| Padre catequiza todos os moradores vivos ao menos uma vez | Padre vence individualmente — jogo continua |
+| Boto enfeitiça todos os moradores ao menos uma vez | Boto vence individualmente — jogo continua |
 | Todos os jogadores humanos eliminados/expulsos, só bots restam | Apocalipse Robô (`winner: "bots"`) |
 
 **Vitórias individuais não encerram o jogo** — apenas registram a conquista do personagem. O jogo segue até uma condição coletiva ser atingida.
@@ -450,9 +476,12 @@ Sistema verifica após cada amanhecer e após cada expulsão:
 | Todas criaturas cumprem objetivos | *"O folclore não precisava de força — precisava de paciência. As criaturas venceram."* |
 | Lua cheia | *"A lua cheia chegou. O folclore está completo. A cidade pertence às criaturas."* |
 | Brás Cubas expulso | *"Espera. [Nome] sorri. Era o Tolo — e ser expulso era exatamente o que queria."* |
-| Mula elimina Padre | *"A maldição foi cumprida. A Mula sem Cabeça encontrou o Padre. Ela vence."* |
+| Mula — Padre sai da partida | *"A maldição foi cumprida. A Mula sem Cabeça encontrou o Padre. Ela vence."* |
 | Iara elimina Delegado | *"O Delegado foi arrastado para as profundezas. Iara vence."* |
 | Cangaceiro elimina Iara | *"O acerto de contas foi feito. O Cangaceiro vence."* |
+| Lobisomem sobrevive à rodada 4 | *"Quatro luas. O lobisomem ainda respira. A maldição está completa."* |
+| Padre catequiza todos moradores | *"A fé, mesmo falsa, foi suficiente. O Padre cumpriu sua missão."* |
+| Boto enfeitiça todos moradores | *"Não sobrou nenhum coração intacto. O Boto venceu."* |
 | Apocalipse Robô | *"Apocalipse Robô"* (tela de fim de jogo com `winner: "bots"`) |
 
 ---

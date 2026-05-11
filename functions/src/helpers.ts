@@ -63,10 +63,22 @@ export async function startNightSequence(roomCode: string, round: number) {
     players.filter((p) => p.alive !== false && !p.eliminated && !p.expelled).map((p) => p.id),
   );
   const order = nightRolesInPlay(secrets, alive);
-  await db
-    .collection("rooms")
-    .doc(roomCode)
-    .update({
+
+  // Lobisomem individual objective: survive to round 4 without expulsion
+  const loboUpdates: Promise<unknown>[] = [];
+  if (round === 4) {
+    const loboPlayer = players.find((p) => secrets[p.id]?.role === "lobisomem");
+    if (loboPlayer && loboPlayer.alive !== false && !loboPlayer.eliminated && !loboPlayer.expelled && !loboPlayer.individualObjectiveMet) {
+      const roomRef = db.collection("rooms").doc(roomCode);
+      loboUpdates.push(
+        roomRef.collection("players").doc(loboPlayer.id).update({ individualObjectiveMet: true }),
+        roomRef.update({ individualWins: FieldValue.arrayUnion({ playerId: loboPlayer.id, role: "lobisomem", type: "lobisomem_survived_r4", round, timestamp: Date.now() }) }),
+      );
+    }
+  }
+
+  await Promise.all([
+    db.collection("rooms").doc(roomCode).update({
       status: "night",
       phase: "night",
       round,
@@ -75,7 +87,9 @@ export async function startNightSequence(roomCode: string, round: number) {
       nightOrderRoles: order,
       nightPendingRoles: order,
       saciActedThisNight: false,
-    });
+    }),
+    ...loboUpdates,
+  ]);
 }
 
 export async function finalizeNight(roomCode: string, round: number) {
@@ -121,6 +135,9 @@ export async function finalizeNight(roomCode: string, round: number) {
       invoked: Boolean(p.invoked),
       doctorLastTargetId: (p.doctorLastTargetId as string | null) ?? null,
       wolfBiteUsed: Boolean(p.wolfBiteUsed),
+      mulaExorcizeUsed: Boolean(p.mulaExorcizeUsed),
+      geniCharmUsed: Boolean(p.geniCharmUsed),
+      catechized: Boolean(p.catechized),
     };
   }
 
@@ -176,6 +193,36 @@ export async function finalizeNight(roomCode: string, round: number) {
     }
   }
 
+  // --- Boto objective: accumulate enchanted moradores ---
+  const botoId = players.find((p) => secrets[p.id]?.role === "boto")?.id;
+  let botoEnchantedMoradores: string[] = (room.botoEnchantedMoradores as string[] | undefined) ?? [];
+  if (botoId) {
+    const botoAction = Object.entries(nightActions).find(([pid]) => secrets[pid]?.role === "boto")?.[1];
+    if (botoAction?.targetId) {
+      const targetSec = secrets[botoAction.targetId];
+      if (targetSec?.side === "morador" && !botoEnchantedMoradores.includes(botoAction.targetId)) {
+        botoEnchantedMoradores = [...botoEnchantedMoradores, botoAction.targetId];
+      }
+    }
+  }
+
+  // --- Padre objective: accumulate catechized moradores ---
+  const padreId = players.find((p) => secrets[p.id]?.role === "padre")?.id;
+  let padreCatechizedMoradores: string[] = (room.padreCatechizedMoradores as string[] | undefined) ?? [];
+  if (padreId) {
+    const padreAction = Object.entries(nightActions).find(([pid]) => secrets[pid]?.role === "padre")?.[1];
+    if (padreAction?.targetId) {
+      const targetSec = secrets[padreAction.targetId];
+      if (targetSec?.side === "morador" && !padreCatechizedMoradores.includes(padreAction.targetId)) {
+        padreCatechizedMoradores = [...padreCatechizedMoradores, padreAction.targetId];
+      }
+    }
+  }
+
+  // Check if Saci was jailed this night → offer Gorro swap
+  const saciId = players.find((p) => secrets[p.id]?.role === "saci")?.id;
+  const saciJailed = saciId ? Boolean(res.players[saciId]?.jailed) : false;
+
   batch.update(roomRef, {
     status: "day",
     phase: "day",
@@ -188,6 +235,9 @@ export async function finalizeNight(roomCode: string, round: number) {
     saciActedLastNight: saciActed,
     individualWins: wins,
     geniInvestigatedTargets: [],
+    botoEnchantedMoradores,
+    padreCatechizedMoradores,
+    ...(saciJailed ? { pendingSaciGorro: true } : {}),
   });
 
   const openRef = roomRef.collection("publicLogEntries").doc();
@@ -200,6 +250,36 @@ export async function finalizeNight(roomCode: string, round: number) {
   });
 
   await batch.commit();
+
+  // --- Check Boto individual objective after commit ---
+  if (botoId) {
+    const aliveMoradores = players.filter(
+      (p) => secrets[p.id]?.side === "morador" && res.players[p.id]?.alive && !res.players[p.id]?.eliminated && !res.players[p.id]?.expelled,
+    );
+    if (aliveMoradores.length > 0 && aliveMoradores.every((p) => botoEnchantedMoradores.includes(p.id))) {
+      const botoPlayer = players.find((p) => p.id === botoId)!;
+      if (!botoPlayer.individualObjectiveMet) {
+        await roomRef.collection("players").doc(botoId).update({ individualObjectiveMet: true });
+        const newWin = { playerId: botoId, role: "boto", type: "boto_all_moradores", round, timestamp: Date.now() };
+        await roomRef.update({ individualWins: FieldValue.arrayUnion(newWin) });
+      }
+    }
+  }
+
+  // --- Check Padre individual objective after commit ---
+  if (padreId) {
+    const aliveMoradores = players.filter(
+      (p) => secrets[p.id]?.side === "morador" && res.players[p.id]?.alive && !res.players[p.id]?.eliminated && !res.players[p.id]?.expelled,
+    );
+    if (aliveMoradores.length > 0 && aliveMoradores.every((p) => padreCatechizedMoradores.includes(p.id))) {
+      const padrePlayer = players.find((p) => p.id === padreId)!;
+      if (!padrePlayer.individualObjectiveMet) {
+        await roomRef.collection("players").doc(padreId).update({ individualObjectiveMet: true });
+        const newWin = { playerId: padreId, role: "padre", type: "padre_all_moradores", round, timestamp: Date.now() };
+        await roomRef.update({ individualWins: FieldValue.arrayUnion(newWin) });
+      }
+    }
+  }
 
   // Auto-vote for bots now that day has started
   const botIds = new Set(players.filter((p) => Boolean(p.isBot)).map((p) => p.id));
@@ -330,6 +410,15 @@ export async function finalizeDay(roomCode: string, round: number) {
       timestamp: Date.now(),
       createdAt: FieldValue.serverTimestamp(),
     });
+    // Mula individual win: Padre expelled by vote
+    if (role === "padre") {
+      const mulaPlayer = players.find((p) => secrets[p.id]?.role === "mula");
+      if (mulaPlayer && !mulaPlayer.individualObjectiveMet) {
+        batch.update(roomRef.collection("players").doc(mulaPlayer.id), { individualObjectiveMet: true });
+        const mulaWin = { playerId: mulaPlayer.id, role: "mula", type: "mula_padre", round, timestamp: Date.now() };
+        batch.update(roomRef, { individualWins: FieldValue.arrayUnion(mulaWin) });
+      }
+    }
     batch.update(roomRef, {
       votingOpen: false,
       ...(role === "bras_cubas" ? { pendingBrasChoice: true } : {}),
@@ -388,6 +477,7 @@ const BOT_ROLE_ACTIONS: Partial<Record<string, string>> = {
   doutor: "save",
   mae_de_santo: "invoke",
   geni: "converse",
+  padre: "catechize",
   boitata: "investigate",
   cartomante: "investigate",
   delegado: "jail",

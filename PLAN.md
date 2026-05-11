@@ -1,6 +1,5 @@
 # PLAN.md — Refatoração de Arquitetura
 
-> **Status:** pendente — não executar ainda.  
 > **Motivação:** `App.tsx` (~1 500 linhas) e `helpers.ts` (~700 linhas) concentram lógica que deveria estar distribuída. Qualquer nova feature aumenta o acoplamento e o tempo de revisão.
 
 ---

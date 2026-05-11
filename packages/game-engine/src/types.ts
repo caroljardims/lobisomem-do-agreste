@@ -71,6 +71,12 @@ export interface PlayerDawnState {
   doctorLastTargetId: string | null;
   /** Lobisomem já usou morder nesta partida. */
   wolfBiteUsed: boolean;
+  /** Mula já usou Exorcismo da Vingança nesta partida. */
+  mulaExorcizeUsed: boolean;
+  /** Geni já usou Charme de Verdade nesta partida. */
+  geniCharmUsed: boolean;
+  /** Catequizado pelo Padre nesta rodada — imune a Iara e Mula nessa noite. */
+  catechized: boolean;
 }
 
 export interface DawnResolveInput {

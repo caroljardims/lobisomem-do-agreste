@@ -26,6 +26,9 @@ function basePlayer(
     invoked: false,
     doctorLastTargetId: null,
     wolfBiteUsed: false,
+    mulaExorcizeUsed: false,
+    geniCharmUsed: false,
+    catechized: false,
   };
 }
 
