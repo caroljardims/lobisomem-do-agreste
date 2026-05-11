@@ -1190,6 +1190,22 @@ input::placeholder {
   color: var(--ink-bright);
 }
 
+.lore-card__fact-list {
+  margin: 0;
+  padding-left: 1.25em;
+  color: var(--ink-cream);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.lore-card__fact-list li {
+  margin: 8px 0 0;
+}
+
+.lore-card__fact-list li:first-child {
+  margin-top: 0;
+}
+
 .lore-card__aside {
   margin: 0;
   padding: 10px 12px;
@@ -1199,6 +1215,7 @@ input::placeholder {
   line-height: 1.5;
   font-style: italic;
   color: var(--ink-muted);
+  white-space: pre-line;
 }
 
 .private-log-entry {
