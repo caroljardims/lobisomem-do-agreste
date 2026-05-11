@@ -1208,19 +1208,57 @@ export function App() {
     if (view === "intro") {
       return (
         <div className="page">
+          <div className="intro-top-deco" aria-hidden="true">
+            <div className="deco-divider">
+              <span className="deco-glyph">◆ ◆ ◆</span>
+            </div>
+          </div>
           <div className="brand-center">
             <div className="brand-title">Folhetim de Bucaré</div>
-            <div className="brand-tagline">jogo de identidade social</div>
           </div>
 
           <div className="intro-body">
-            <h2 className="h-display">
-              Nem toda criatura da noite vive no mato.
-              <br />
-              Algumas criaturas aprenderam a sorrir.
-              <br />
-              Esta noite, cuidado com quem você conhece.
-            </h2>
+            <div className="intro-cordel" lang="pt-BR">
+              <p>
+                Noite longa no sertão
+                <br />
+                O calor não é da rua
+                <br />
+                Quem assombra meu portão
+                <br />
+                Tem apreço pela lua.
+                <br />
+                A magia dessa gente
+                <br />
+                Tem poder inconsequente!
+              </p>
+              <p>
+                Senti um calor no couro
+                <br />
+                Tão perto passou a mula!
+                <br />
+                E com grito da Iara
+                <br />
+                Rio arrasta quem não cura!
+                <br />
+                E o lobo dessa terra
+                <br />
+                Foi vizinho, virou fera!
+              </p>
+              <p>
+                Nessa noite de mistério
+                <br />
+                Quem se vai e quem que fica?
+                <br />
+                Vai ser no alvorecer
+                <br />
+                Que resolve a intriga
+                <br />
+                Se eu vivo ou se me vô
+                <br />
+                Pr'outro mundo, que horrô!
+              </p>
+            </div>
             <p className="copy-muted">
               crie uma sala, divida o código com a turma e revele os segredos do
               folclore — em tempo real.
