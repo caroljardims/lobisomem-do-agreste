@@ -1215,9 +1215,11 @@ export function App() {
 
           <div className="intro-body">
             <h2 className="h-display">
-              Cada um no sertão,
+              Nem toda criatura da noite vive no mato.
               <br />
-              todos na mesma noite.
+              Algumas criaturas aprenderam a sorrir.
+              <br />
+              Esta noite, cuidado com quem você conhece.
             </h2>
             <p className="copy-muted">
               crie uma sala, divida o código com a turma e revele os segredos do
