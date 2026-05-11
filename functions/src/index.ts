@@ -617,10 +617,11 @@ export const addBots = onCall(async (req) => {
   const batch = db.batch();
   for (let i = 0; i < count; i++) {
     const botId = randomId();
+    const name = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
     batch.set(roomRef.collection("players").doc(botId), {
       id: botId,
       uid: `bot_${botId}`,
-      name: BOT_NAMES[i % BOT_NAMES.length],
+      name,
       alive: true,
       eliminated: false,
       expelled: false,
