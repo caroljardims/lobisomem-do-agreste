@@ -871,6 +871,12 @@ export function App() {
   }, [roomCode]);
 
   useEffect(() => {
+    if (room?.status === "day" && Number(room.round ?? 1) === 1) {
+      setLoreOpen(false);
+    }
+  }, [room?.status, room?.round]);
+
+  useEffect(() => {
     if (!roomCode || !playerId) {
       setMyRole(null);
       return;
@@ -1662,6 +1668,7 @@ export function App() {
           )}
 
           {room.status === "night" && (() => {
+            const meNight = players.find((p) => p.id === playerId);
             const myRoleIsPending = !!(myRole && room.nightPendingRoles?.includes(myRole));
             const needsAlignment = (myRole === "curupira" || myRole === "boitata") && room.round === 1;
             const targetPool = myRole === "mae_de_santo"
@@ -1669,6 +1676,12 @@ export function App() {
               : players.filter((p) => p.id !== playerId && p.alive !== false && !p.eliminated && !p.expelled);
             const needsJailReason = myRole === "delegado";
             const canSubmit = !loading && !!nightTarget && (!needsAlignment || !!nightSpecialAction) && (!needsJailReason || !!nightSpecialAction?.trim());
+            const canMarkNightReady =
+              !myRoleIsPending &&
+              roleActionOptions.length === 0 &&
+              meNight?.alive !== false &&
+              !meNight?.eliminated &&
+              !meNight?.expelled;
 
             return (
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
@@ -1736,11 +1749,25 @@ export function App() {
                     </button>
                   </>
                 ) : (
-                  <p className="muted" style={{ margin: 0 }}>
-                    {myRole && !["coronel", "aldeao", "bras_cubas"].includes(myRole)
-                      ? "Ação enviada. Aguardando os outros…"
-                      : "Você não tem ação noturna. Aguarde o amanhecer."}
-                  </p>
+                  <>
+                    <p className="muted" style={{ margin: 0 }}>
+                      {myRole && !["coronel", "aldeao", "bras_cubas"].includes(myRole)
+                        ? "Ação enviada. Aguardando os outros…"
+                        : "Você não tem ação noturna. Aguarde o amanhecer."}
+                    </p>
+                    {canMarkNightReady && (
+                      <button
+                        type="button"
+                        disabled={loading || nightActionSent}
+                        className={nightActionSent ? "vote-sent" : undefined}
+                        onClick={() =>
+                          run("markNightReady", { roomCode }).then(() => setNightActionSent(true))
+                        }
+                      >
+                        {nightActionSent ? "✓ Toque da alvorada enviado" : "Toque da alvorada"}
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
             );

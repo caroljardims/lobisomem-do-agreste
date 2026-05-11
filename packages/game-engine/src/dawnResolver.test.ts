@@ -68,4 +68,62 @@ describe("resolveDawn", () => {
     expect(res.players.v.alive).toBe(true);
     expect(res.publicLog.some((e) => e.type === "death")).toBe(false);
   });
+
+  it("Mula exorcismo elimina Padre e registra vitória individual", () => {
+    const mula = basePlayer("m", "Mula", "mula");
+    const padre = basePlayer("p", "Padre", "padre");
+    const aldeao = basePlayer("a", "Aldeao", "aldeao");
+    const players = { m: mula, p: padre, a: aldeao };
+    const res = resolveDawn({
+      round: 2,
+      now: 1,
+      players,
+      nightActions: {
+        m: { role: "mula", action: "exorcize", targetId: "p", specialAction: null },
+      },
+      geniInvestigatedIds: {},
+    });
+    expect(res.players.p.alive).toBe(false);
+    expect(res.players.p.eliminated).toBe(true);
+    expect(res.publicLog.some((e) => e.type === "death")).toBe(true);
+    expect(res.individualWins.some((w) => w.role === "mula" && w.type === "mula_padre")).toBe(true);
+  });
+
+  it("Mula exorcismo falha se alvo estiver protegido (Curupira)", () => {
+    const mula = basePlayer("m", "Mula", "mula");
+    const curupira = basePlayer("c", "Curupira", "curupira");
+    const padre = basePlayer("p", "Padre", "padre");
+    const players = { m: mula, c: curupira, p: padre };
+    const res = resolveDawn({
+      round: 2,
+      now: 1,
+      players,
+      nightActions: {
+        c: { role: "curupira", action: "protect", targetId: "p", specialAction: null },
+        m: { role: "mula", action: "exorcize", targetId: "p", specialAction: null },
+      },
+      geniInvestigatedIds: {},
+    });
+    expect(res.players.p.alive).toBe(true);
+    expect(res.individualWins.some((w) => w.role === "mula")).toBe(false);
+  });
+
+  it("Geni Charme de Verdade protege alvo do Lobisomem", () => {
+    const geni = basePlayer("g", "Geni", "geni");
+    const wolf = basePlayer("w", "Wolf", "lobisomem");
+    const alvo = basePlayer("a", "Alvo", "aldeao");
+    const players = { g: geni, w: wolf, a: alvo };
+    const res = resolveDawn({
+      round: 1,
+      now: 1,
+      players,
+      nightActions: {
+        g: { role: "geni", action: "charm", targetId: "a", specialAction: null },
+        w: { role: "lobisomem", action: "eliminate", targetId: "a", specialAction: null },
+      },
+      geniInvestigatedIds: {},
+    });
+    expect(res.players.a.alive).toBe(true);
+    expect(res.publicLog.some((e) => e.type === "death")).toBe(false);
+  });
 });

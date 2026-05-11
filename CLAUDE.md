@@ -33,6 +33,7 @@ Sistema de party game remoto baseado em turnos. Jogadores acessam via browser no
   currentActorRole: string | null, // papel cuja ação está pendente, ou null
   nightOrderRoles: RoleId[],     // ordem completa de papéis da noite (calculada no início)
   nightPendingRoles: RoleId[],   // papéis ainda não resolvidos nessa noite
+  nightReadyPlayerIds: string[], // IDs de jogadores que já concluíram sua vez na noite (incluindo sem-ação que clicaram "Toque da alvorada")
   votingOpen: boolean,           // true durante todo o dia; false após finalizeDay()
   votesRound: number,            // rodada cujos votos estão sendo coletados
   saciActedThisNight: boolean,   // Saci agiu nessa noite (para dobrar votos em Brás Cubas)
@@ -149,6 +150,8 @@ Em implementações Firestore, preferir **subcoleções** para `publicLog` / `pr
 4. Loop de rodadas:
    a. Fase da noite — sistema chama personagens em ordem (nightPendingRoles)
       - Cada jogador vê descrição da ação do seu personagem enquanto espera/age
+      - Jogadores sem ação noturna veem botão "Toque da alvorada" para confirmar que estão prontos (`markNightReady`)
+      - A noite só avança quando `nightPendingRoles` está vazio E todos os vivos estão em `nightReadyPlayerIds`
       - Bots agem automaticamente via processBotNightActions()
    b. Amanhecer — sistema resolve ações via resolveDawn() e publica log público
       - Panorama visível a todos: mortes, aterrorizações, invocações, etc.
@@ -156,7 +159,7 @@ Em implementações Firestore, preferir **subcoleções** para `publicLog` / `pr
       - Bots votam automaticamente no início do dia (alvos aleatórios entre todos os vivos quando há humanos; nulo quando só bots restam)
       - Dia encerra quando todos os elegíveis votaram → finalizeDay()
       - Se nenhum humano restar ao amanhecer: finalizeDay() é chamado automaticamente sem botão
-   d. Expulsão processada → pendingNightStart: true → anfitrião vê botão "Toque de recolher"
+   d. Dia encerra → `pendingNightStart: true` **sempre** (com ou sem expulsão, incluindo empate) → anfitrião vê botão "Toque de recolher"
    e. Anfitrião clica → startNight() → noite seguinte começa
    f. Verificação de condições de vitória → checkCollectiveWin()
 5. Fim de jogo — sistema anuncia vencedor
@@ -415,7 +418,7 @@ A votação fica **sempre aberta** durante toda a fase do dia — não há botã
 - Quando todos os elegíveis votaram: sistema chama `finalizeDay()` automaticamente
 - `finalizeDay()` tem guarda de idempotência: `if (status !== "day" || votingOpen === false) return`
 - Maioria simples define o expulso
-- Empate: sem expulsão nessa rodada → sistema avança para a próxima noite
+- Empate: sem expulsão nessa rodada → Folhetim exibe *"A votação terminou em empate. Ninguém foi expulso."* → sistema pausa com `pendingNightStart: true`
 
 ### Expulsão
 
@@ -515,18 +518,20 @@ Sistema verifica após cada amanhecer e após cada expulsão:
 | Arquivo | Responsabilidade |
 |---|---|
 | `index.ts` | Exports de todas as `onCall` functions |
-| `helpers.ts` | Lógica compartilhada: `loadPlayers`, `loadSecrets`, `startNightSequence`, `finalizeNight`, `finalizeDay`, `processBotNightActions` |
+| `helpers.ts` | Lógica compartilhada: `loadPlayers`, `loadSecrets`, `startNightSequence`, `maybeFinalizeNight`, `finalizeNight`, `finalizeDay`, `processBotNightActions` |
 
 **Funções principais:**
 
 - `startGame` — sorteia personagens, porta-voz, inicia noite 1; executa bots se presentes
-- `submitNightAction` — registra ação noturna; avança `nightPendingRoles`; chama `finalizeNight` se vazio
+- `submitNightAction` — registra ação noturna; avança `nightPendingRoles`; adiciona jogador a `nightReadyPlayerIds`; chama `maybeFinalizeNight`
+- `markNightReady` — jogadores sem ação noturna confirmam que estão prontos; adiciona a `nightReadyPlayerIds`; chama `maybeFinalizeNight`
+- `maybeFinalizeNight` — verifica se `nightPendingRoles` está vazio **e** todos os vivos estão em `nightReadyPlayerIds`; se sim, chama `finalizeNight`
 - `submitVote` — registra voto; se todos elegíveis votaram → chama `finalizeDay`
 - `finalizeNight` — resolve `resolveDawn()`, aplica resultados, muda `status` para `"day"`, vota bots automaticamente; se só restam bots, chama `finalizeDay()` automaticamente
-- `finalizeDay` — tally de votos, processa expulsão; se nenhum humano vivo → encerra como Apocalipse Robô; se expulsão sem vitória → `pendingNightStart: true`; se sem expulsão → avança para próxima noite
+- `finalizeDay` — tally de votos, processa expulsão; se nenhum humano vivo → encerra como Apocalipse Robô; **sempre** seta `pendingNightStart: true` ao fim (com expulsão, empate ou sem expulsão); se expulsão → verifica vitória coletiva antes de pausar
 - `startNight` — (host only) lê `pendingNightRound`, limpa `pendingNightStart`, chama `startNightSequence`
 - `restartGame` — (host only, status `"ended"`) deleta subcoleções via `db.recursiveDelete()`, reseta jogadores e sala para lobby
-- `processBotNightActions` — bots escolhem alvos aleatórios e submetem ações noturnas; se todos pending são bots → chama `finalizeNight`
+- `processBotNightActions` — bots escolhem alvos aleatórios e submetem ações noturnas
 - `findPlayer(players, req)` — helper em `index.ts`: busca jogador por `playerId` (localStorage, estável) antes de fallback para `uid` (pode mudar em re-auth anônima)
 
 ### UX do frontend (`apps/web/src/App.tsx`)
@@ -534,6 +539,8 @@ Sistema verifica após cada amanhecer e após cada expulsão:
 **Fase da noite:**
 - Jogador vê descrição textual do que seu personagem está fazendo enquanto age (ex: *"O Lobisomem está à espreita…"*)
 - Após confirmar ação, volta à tela de espera
+- Jogadores sem ação noturna (aldeão, coronel, brás_cubas) veem botão **"Toque da alvorada"** — clicam para confirmar que estão prontos (`markNightReady`)
+- O amanhecer só é processado quando todos os pendentes agiram **e** todos os vivos confirmaram (`nightReadyPlayerIds`)
 
 **Transição noite → dia:**
 - Panorama visível a todos: lista de eventos da noite atual (`type: death | bite | terror | invocation | dawn | special` com `round === currentRound`)
@@ -573,7 +580,9 @@ Sistema verifica após cada amanhecer e após cada expulsão:
 - ✓ Feedback dos botões — ações noturnas e do dia têm estado de carregamento e confirmação (✓ Ação registrada); botão fica inativo após envio
 - ✓ Chat — altura e design — `.chat-card` com `min-height: 160px / max-height: 320px`; mensagens de voto em estilo muted menor
 - ✓ Bots interativos no chat — ao início do dia, um bot aleatório envia frase temática do banco de frases (`BOT_PHRASES` em `finalizeNight`)
-- ✓ Toque de recolher — após expulsão sem vitória, jogo pausa em `status: "day"` com `pendingNightStart: true`; anfitrião clica "Toque de recolher" → `startNight` → noite começa; expulsão exibida no Folhetim durante a pausa
+- ✓ Toque de recolher — após votação (com expulsão, empate ou sem expulsão), jogo **sempre** pausa em `status: "day"` com `pendingNightStart: true`; anfitrião clica "Toque de recolher" → `startNight` → noite começa; expulsão ou mensagem de empate exibida no Folhetim durante a pausa
+- ✓ Toque da alvorada — jogadores sem ação noturna confirmam prontidão via botão "Toque da alvorada" (`markNightReady`); amanhecer só processa quando todos os vivos estão em `nightReadyPlayerIds`
+- ✓ Mensagem de empate no Folhetim — quando votação termina em empate, Folhetim exibe *"A votação terminou em empate. Ninguém foi expulso."* (type: expulsion)
 - ✓ Apocalipse Robô — quando todos os humanos saem e só bots restam, `finalizeDay()` detecta e encerra com `winner: "bots"`; bots votam nulo neste cenário (votam em qualquer vivo quando há humanos)
 - ✓ findPlayer — lookup por `playerId` (localStorage) antes de uid, evitando quebra quando Firebase renova uid de auth anônima
 - ✓ Flags de status por rodada — `dawnResolver` reseta `seduced`, `jailed`, `enchanted`, `blockedNextNight`, `invoked`, `silenced`, `silencedRounds` a cada amanhecer (antes eram acumulados permanentemente)

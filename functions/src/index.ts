@@ -11,9 +11,9 @@ import type { NightActionInput, RoleId } from "folclore-game-engine";
 import {
   db,
   finalizeDay,
-  finalizeNight,
   loadPlayers,
   loadSecrets,
+  maybeFinalizeNight,
   processBotNightActions,
   randomCode,
   randomId,
@@ -299,15 +299,46 @@ export const submitNightAction = onCall(async (req) => {
   }
 
   const newPending = pendingRoles.filter((r) => r !== mySecret.role);
+  await roomRef.update({
+    nightPendingRoles: newPending,
+    nightReadyPlayerIds: FieldValue.arrayUnion(me.id),
+  });
+  await processBotNightActions(code, round);
+  const dawn = await maybeFinalizeNight(code, round);
+  return { advanced: true, dawn };
+});
 
-  if (newPending.length === 0) {
-    await finalizeNight(code, round);
-    return { advanced: true, dawn: true };
+export const markNightReady = onCall(async (req) => {
+  requireAuth(req);
+  const code = String(req.data?.roomCode ?? "").toUpperCase().trim();
+  if (!code) throw new HttpsError("invalid-argument", "Código inválido.");
+
+  const roomRef = db.collection("rooms").doc(code);
+  const roomSnap = await roomRef.get();
+  if (!roomSnap.exists) throw new HttpsError("not-found", "Sala não encontrada.");
+  const room = roomSnap.data()!;
+  if (room.status !== "night") throw new HttpsError("failed-precondition", "Não é fase da noite.");
+
+  const players = await loadPlayers(code);
+  const secrets = await loadSecrets(code);
+  const me = findPlayer(players, req);
+  if (!me) throw new HttpsError("permission-denied", "Você não está nesta sala.");
+  if (me.alive === false || me.eliminated || me.expelled) {
+    throw new HttpsError("failed-precondition", "Jogador fora da rodada.");
+  }
+  const mySecret = secrets[me.id];
+  if (!mySecret) throw new HttpsError("failed-precondition", "Segredo ausente.");
+
+  const pendingRoles = new Set<RoleId>((room.nightPendingRoles as RoleId[]) ?? []);
+  if (pendingRoles.has(mySecret.role)) {
+    throw new HttpsError("failed-precondition", "Seu personagem ainda precisa agir na noite.");
   }
 
-  await roomRef.update({ nightPendingRoles: newPending });
+  const round = Number(room.round ?? 1);
+  await roomRef.update({ nightReadyPlayerIds: FieldValue.arrayUnion(me.id) });
   await processBotNightActions(code, round);
-  return { advanced: true };
+  const dawn = await maybeFinalizeNight(code, round);
+  return { ok: true, dawn };
 });
 
 export const submitVote = onCall(async (req) => {
