@@ -29,6 +29,11 @@ function copyToClipboard(text: string) {
   navigator.clipboard?.writeText(text).catch(() => {});
 }
 
+function BtnSpinner({ show }: { show: boolean }) {
+  if (!show) return null;
+  return <span className="btn-spinner" aria-hidden="true" />;
+}
+
 const LS_ROOM = "folclore_roomCode";
 const LS_PLAYER = "folclore_playerId";
 const LS_GLYPH = "folclore_glyph";
@@ -803,7 +808,9 @@ function describeNightAction(
 export function App() {
   const [uid, setUid] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const anyPending = pendingAction !== null;
+  const busy = (key: string) => pendingAction === key;
   const [roomCode, setRoomCode] = useState(() => localStorage.getItem(LS_ROOM) ?? "");
   const [playerId, setPlayerId] = useState(() => localStorage.getItem(LS_PLAYER) ?? "");
   const [name, setName] = useState("");
@@ -999,29 +1006,63 @@ export function App() {
 
   const isHost = !!(room?.hostUid && uid === room.hostUid);
 
-  const run = useCallback(async (fnName: string, data: Record<string, unknown>) => {
+  const run = useCallback(
+    async (
+      fnName: string,
+      data: Record<string, unknown>,
+      pendingKey: string = fnName,
+    ) => {
+      setErr(null);
+      setPendingAction(pendingKey);
+      try {
+        const c = call(fnName);
+        const res = await c({ playerId, ...data });
+        return res.data as Record<string, unknown>;
+      } catch (e: unknown) {
+        const msg =
+          e && typeof e === "object" && "message" in e
+            ? String((e as { message: string }).message)
+            : String(e);
+        setErr(msg);
+        throw e;
+      } finally {
+        setPendingAction(null);
+      }
+    },
+    [playerId],
+  );
+
+  const fillBots = useCallback(async () => {
     setErr(null);
-    setLoading(true);
+    setPendingAction("fillBots");
     try {
-      const c = call(fnName);
-      const res = await c({ playerId, ...data });
-      return res.data as Record<string, unknown>;
+      if (Number(room?.expectedPlayerCount) !== expected) {
+        await call("setExpectedPlayerCount")({
+          playerId,
+          roomCode,
+          expectedPlayerCount: expected,
+        });
+      }
+      await call("addBots")({
+        playerId,
+        roomCode,
+        count: Math.max(1, Math.min(expected, 10) - players.length),
+      });
     } catch (e: unknown) {
       const msg =
         e && typeof e === "object" && "message" in e
           ? String((e as { message: string }).message)
           : String(e);
       setErr(msg);
-      throw e;
     } finally {
-      setLoading(false);
+      setPendingAction(null);
     }
-  }, [playerId]);
+  }, [playerId, roomCode, room?.expectedPlayerCount, expected, players.length]);
 
   const createRoom = async () => {
     localStorage.setItem(LS_GLYPH, glyph);
     setAmHost(true);
-    const r = await run("createRoom", { name, expectedPlayerCount: expected });
+    const r = await run("createRoom", { name, expectedPlayerCount: expected }, "createRoom");
     const code = String(r.roomCode ?? "");
     const pid = String(r.playerId ?? "");
     setRoomCode(code);
@@ -1033,7 +1074,7 @@ export function App() {
   const joinRoom = async () => {
     localStorage.setItem(LS_GLYPH, glyph);
     const code = joinCodeArr.join("").toUpperCase().trim();
-    const r = await run("joinRoom", { roomCode: code, name });
+    const r = await run("joinRoom", { roomCode: code, name }, "joinRoom");
     const pid = String(r.playerId ?? "");
     setRoomCode(code);
     setPlayerId(pid);
@@ -1082,7 +1123,7 @@ export function App() {
     return (p.name?.[0] ?? "?").toUpperCase();
   };
 
-  const startGame = () => run("startGame", { roomCode });
+  const startGame = () => run("startGame", { roomCode }, "startGame");
 
   const ROLE_NIGHT_DESCRIPTION: Record<string, string> = {
     lobisomem:    "Você sai para caçar. Escolha um alvo para eliminar — ou use a mordida para converter (uso único).",
@@ -1350,12 +1391,13 @@ export function App() {
               <button
                 type="button"
                 className="primary-btn"
-                disabled={loading || !name.trim()}
+                disabled={anyPending || !name.trim()}
                 onClick={createRoom}
               >
                 <div className="btn-stack">
-                  <span className="btn-title">
-                    {loading ? "aguarda…" : "Abrir sala"}
+                  <span className="btn-title btn-title-row">
+                    {busy("createRoom") ? "aguarda…" : "Abrir sala"}
+                    <BtnSpinner show={busy("createRoom")} />
                   </span>
                   <span className="btn-sub">geramos o código para você</span>
                 </div>
@@ -1455,12 +1497,13 @@ export function App() {
               <button
                 type="button"
                 className="primary-btn"
-                disabled={loading || !name.trim()}
+                disabled={anyPending || !name.trim()}
                 onClick={joinRoom}
               >
                 <div className="btn-stack">
-                  <span className="btn-title">
-                    {loading ? "aguarda…" : "Entrar na sala"}
+                  <span className="btn-title btn-title-row">
+                    {busy("joinRoom") ? "aguarda…" : "Entrar na sala"}
+                    <BtnSpinner show={busy("joinRoom")} />
                   </span>
                   <span className="btn-sub">entrar na partida</span>
                 </div>
@@ -1490,16 +1533,17 @@ export function App() {
     <button
       type="button"
       className={canStart ? "primary-btn" : "primary-btn primary-btn-disabled"}
-      disabled={loading || !canStart}
+      disabled={anyPending || !canStart}
       onClick={startGame}
     >
       <div className="btn-stack">
-        <span className="btn-title">
-          {loading
+        <span className="btn-title btn-title-row">
+          {busy("startGame")
             ? "iniciando…"
             : canStart
               ? "Começar a noite"
               : "Esperando jogadores"}
+          <BtnSpinner show={busy("startGame")} />
         </span>
         <span className="btn-sub">
           {canStart
@@ -1640,30 +1684,27 @@ export function App() {
                   {stepper}
                   <button
                     type="button"
-                    className="chip-btn"
-                    disabled={loading || !room}
+                    className="chip-btn chip-btn--with-spinner"
+                    disabled={anyPending || !room}
                     onClick={() =>
                       run("setExpectedPlayerCount", {
                         roomCode,
                         expectedPlayerCount: expected,
-                      })
+                      }, "setExpected")
                     }
                   >
                     atualizar vagas
+                    <BtnSpinner show={busy("setExpected")} />
                   </button>
                   {players.length < Math.min(expected, 10) && (
                     <button
                       type="button"
-                      className="chip-btn"
-                      disabled={loading}
-                      onClick={async () => {
-                        if (Number(room?.expectedPlayerCount) !== expected) {
-                          await run("setExpectedPlayerCount", { roomCode, expectedPlayerCount: expected });
-                        }
-                        await run("addBots", { roomCode, count: Math.max(1, Math.min(expected, 10) - players.length) });
-                      }}
+                      className="chip-btn chip-btn--with-spinner"
+                      disabled={anyPending}
+                      onClick={fillBots}
                     >
                       + preencher com bots ({Math.min(expected, 10) - players.length} vagas)
+                      <BtnSpinner show={busy("fillBots")} />
                     </button>
                   )}
                 </div>
@@ -1715,7 +1756,7 @@ export function App() {
               ? players.filter((p) => p.eliminated && !p.expelled)
               : players.filter((p) => p.id !== playerId && p.alive !== false && !p.eliminated && !p.expelled);
             const needsJailReason = myRole === "delegado";
-            const canSubmit = !loading && !!nightTarget && (!needsAlignment || !!nightSpecialAction) && (!needsJailReason || !!nightSpecialAction?.trim());
+            const canSubmit = !anyPending && !!nightTarget && (!needsAlignment || !!nightSpecialAction) && (!needsJailReason || !!nightSpecialAction?.trim());
             const canMarkNightReady =
               !myRoleIsPending &&
               roleActionOptions.length === 0 &&
@@ -1773,19 +1814,30 @@ export function App() {
                     </select>
                     <button
                       type="button"
-                      disabled={!canSubmit || loading || nightActionSent}
+                      disabled={!canSubmit || anyPending || nightActionSent}
                       className={nightActionSent ? "vote-sent" : undefined}
                       style={{ marginTop: "4px" }}
                       onClick={() =>
-                        run("submitNightAction", {
-                          roomCode,
-                          action: nightAction,
-                          targetId: nightTarget || null,
-                          specialAction: nightSpecialAction,
-                        }).then(() => setNightActionSent(true))
+                        run(
+                          "submitNightAction",
+                          {
+                            roomCode,
+                            action: nightAction,
+                            targetId: nightTarget || null,
+                            specialAction: nightSpecialAction,
+                          },
+                          "nightAction",
+                        ).then(() => setNightActionSent(true))
                       }
                     >
-                      {loading ? "enviando…" : nightActionSent ? "✓ Ação registrada" : "Enviar ação"}
+                      <span className="btn-with-spinner">
+                        {busy("nightAction")
+                          ? "enviando…"
+                          : nightActionSent
+                            ? "✓ Ação registrada"
+                            : "Enviar ação"}
+                        <BtnSpinner show={busy("nightAction")} />
+                      </span>
                     </button>
                   </>
                 ) : (
@@ -1798,13 +1850,22 @@ export function App() {
                     {canMarkNightReady && (
                       <button
                         type="button"
-                        disabled={loading || nightActionSent}
+                        disabled={anyPending || nightActionSent}
                         className={nightActionSent ? "vote-sent" : undefined}
                         onClick={() =>
-                          run("markNightReady", { roomCode }).then(() => setNightActionSent(true))
+                          run("markNightReady", { roomCode }, "markNightReady").then(() =>
+                            setNightActionSent(true),
+                          )
                         }
                       >
-                        {nightActionSent ? "✓ Toque da alvorada enviado" : "Toque da alvorada"}
+                        <span className="btn-with-spinner">
+                          {busy("markNightReady")
+                            ? "enviando…"
+                            : nightActionSent
+                              ? "✓ Toque da alvorada enviado"
+                              : "Toque da alvorada"}
+                          <BtnSpinner show={busy("markNightReady")} />
+                        </span>
                       </button>
                     )}
                   </>
@@ -1907,14 +1968,16 @@ export function App() {
                       />
                       <button
                         type="button"
+                        className="btn-with-spinner"
+                        disabled={!chatText.trim() || anyPending}
                         onClick={() =>
-                          run("sendChatMessage", {
-                            roomCode,
-                            text: chatText,
-                          }).then(() => setChatText(""))
+                          run("sendChatMessage", { roomCode, text: chatText }, "chatSend").then(() =>
+                            setChatText(""),
+                          )
                         }
                       >
-                        Enviar
+                        {busy("chatSend") ? "enviando…" : "Enviar"}
+                        <BtnSpinner show={busy("chatSend")} />
                       </button>
                     </div>
                   );
@@ -1926,7 +1989,7 @@ export function App() {
                     <label>Seu voto - vote para expulsar um suspeito</label>
                     <select
                       value={voteSelectValue}
-                      disabled={hasVoted || loading}
+                      disabled={hasVoted || anyPending}
                       onChange={(e) => setVoteTarget(e.target.value)}
                     >
                       <option value="">Nulo</option>
@@ -1947,12 +2010,15 @@ export function App() {
                     <button
                       type="button"
                       className={hasVoted ? "vote-sent" : undefined}
-                      disabled={hasVoted || loading}
+                      disabled={hasVoted || anyPending}
                       onClick={() =>
-                        run("submitVote", { roomCode, targetId: voteTarget || null })
+                        run("submitVote", { roomCode, targetId: voteTarget || null }, "vote")
                       }
                     >
-                      {hasVoted ? "✓ Voto enviado" : "Votar"}
+                      <span className="btn-with-spinner">
+                        {busy("vote") ? "enviando…" : hasVoted ? "✓ Voto enviado" : "Votar"}
+                        <BtnSpinner show={busy("vote")} />
+                      </span>
                     </button>
                   </div>
                 )}
@@ -1961,12 +2027,17 @@ export function App() {
                     <button
                       type="button"
                       className={allVotesIn ? "primary-btn" : undefined}
-                      disabled={loading || !allVotesIn}
-                      onClick={() => run("advanceDay", { roomCode })}
+                      disabled={anyPending || !allVotesIn}
+                      onClick={() => run("advanceDay", { roomCode }, "advanceDay")}
                     >
-                      {allVotesIn
-                        ? "Encerrar dia e contar votos"
-                        : `Aguardando votos — ${eligibleVoters.filter((p) => Object.hasOwn(dayRoundVotes, p.id ?? "")).length} de ${eligibleVoters.length}`}
+                      <span className="btn-with-spinner">
+                        {busy("advanceDay")
+                          ? "aguarda…"
+                          : allVotesIn
+                            ? "Encerrar dia e contar votos"
+                            : `Aguardando votos — ${eligibleVoters.filter((p) => Object.hasOwn(dayRoundVotes, p.id ?? "")).length} de ${eligibleVoters.length}`}
+                        <BtnSpinner show={busy("advanceDay")} />
+                      </span>
                     </button>
                   </div>
                 )}
@@ -1975,10 +2046,13 @@ export function App() {
                     <button
                       type="button"
                       className="primary-btn"
-                      disabled={loading}
-                      onClick={() => run("startNight", { roomCode })}
+                      disabled={anyPending}
+                      onClick={() => run("startNight", { roomCode }, "startNight")}
                     >
-                      Toque de recolher
+                      <span className="btn-with-spinner" style={{ width: "100%" }}>
+                        {busy("startNight") ? "recolhendo…" : "Toque de recolher"}
+                        <BtnSpinner show={busy("startNight")} />
+                      </span>
                     </button>
                   </div>
                 )}
@@ -1986,16 +2060,27 @@ export function App() {
                   <div className="row day-actions-row day-section">
                     <button
                       type="button"
-                      disabled={!resolvedVoteTarget || loading || dayActionSent === "coronel"}
+                      disabled={!resolvedVoteTarget || anyPending || dayActionSent === "coronel"}
                       className={dayActionSent === "coronel" ? "vote-sent" : undefined}
                       onClick={() =>
-                        run("coronelStartAccusation", {
-                          roomCode,
-                          targetId: resolvedVoteTarget,
-                        }).then(() => setDayActionSent("coronel"))
+                        run(
+                          "coronelStartAccusation",
+                          {
+                            roomCode,
+                            targetId: resolvedVoteTarget,
+                          },
+                          "coronelAccuse",
+                        ).then(() => setDayActionSent("coronel"))
                       }
                     >
-                      {loading ? "enviando…" : dayActionSent === "coronel" ? "✓ Acusação iniciada" : "Coronel: acusação formal"}
+                      <span className="btn-with-spinner">
+                        {busy("coronelAccuse")
+                          ? "enviando…"
+                          : dayActionSent === "coronel"
+                            ? "✓ Acusação iniciada"
+                            : "Coronel: acusação formal"}
+                        <BtnSpinner show={busy("coronelAccuse")} />
+                      </span>
                     </button>
                   </div>
                 )}
@@ -2004,24 +2089,32 @@ export function App() {
                     <span className="muted day-actions-label">Votação da acusação formal</span>
                     <button
                       type="button"
-                      disabled={loading || dayActionSent === "coronel_vote"}
+                      disabled={anyPending || dayActionSent === "coronel_vote"}
                       className={dayActionSent === "coronel_vote" ? "vote-sent" : undefined}
                       onClick={() =>
-                        run("coronelAccusationVote", { roomCode, yes: true })
-                          .then(() => setDayActionSent("coronel_vote"))
+                        run("coronelAccusationVote", { roomCode, yes: true }, "coronelVoteYes").then(() =>
+                          setDayActionSent("coronel_vote"),
+                        )
                       }
                     >
-                      {dayActionSent === "coronel_vote" ? "✓ Votado" : "Voto sim"}
+                      <span className="btn-with-spinner">
+                        {busy("coronelVoteYes") ? "enviando…" : dayActionSent === "coronel_vote" ? "✓ Votado" : "Voto sim"}
+                        <BtnSpinner show={busy("coronelVoteYes")} />
+                      </span>
                     </button>
                     <button
                       type="button"
-                      disabled={loading || dayActionSent === "coronel_vote"}
+                      disabled={anyPending || dayActionSent === "coronel_vote"}
                       onClick={() =>
-                        run("coronelAccusationVote", { roomCode, yes: false })
-                          .then(() => setDayActionSent("coronel_vote"))
+                        run("coronelAccusationVote", { roomCode, yes: false }, "coronelVoteNo").then(() =>
+                          setDayActionSent("coronel_vote"),
+                        )
                       }
                     >
-                      Voto não
+                      <span className="btn-with-spinner">
+                        {busy("coronelVoteNo") ? "enviando…" : "Voto não"}
+                        <BtnSpinner show={busy("coronelVoteNo")} />
+                      </span>
                     </button>
                   </div>
                 )}
@@ -2029,16 +2122,23 @@ export function App() {
                   <div className="row day-actions-row day-section">
                     <button
                       type="button"
-                      disabled={!resolvedVoteTarget || loading || dayActionSent === "tiro"}
+                      disabled={!resolvedVoteTarget || anyPending || dayActionSent === "tiro"}
                       className={dayActionSent === "tiro" ? "vote-sent" : undefined}
                       onClick={() =>
-                        run("cangaceiroTiroCerto", {
-                          roomCode,
-                          targetId: resolvedVoteTarget,
-                        }).then(() => setDayActionSent("tiro"))
+                        run(
+                          "cangaceiroTiroCerto",
+                          {
+                            roomCode,
+                            targetId: resolvedVoteTarget,
+                          },
+                          "tiro",
+                        ).then(() => setDayActionSent("tiro"))
                       }
                     >
-                      {loading ? "enviando…" : dayActionSent === "tiro" ? "✓ Tiro disparado" : "Tiro Certo"}
+                      <span className="btn-with-spinner">
+                        {busy("tiro") ? "enviando…" : dayActionSent === "tiro" ? "✓ Tiro disparado" : "Tiro Certo"}
+                        <BtnSpinner show={busy("tiro")} />
+                      </span>
                     </button>
                   </div>
                 )}
@@ -2048,29 +2148,48 @@ export function App() {
                     {canShowSaciGorroOffer(myRole, room, myPlayer) && (
                       <button
                         type="button"
-                        disabled={loading || dayActionSent === "gorro_offer"}
+                        disabled={anyPending || dayActionSent === "gorro_offer"}
                         className={dayActionSent === "gorro_offer" ? "vote-sent" : undefined}
                         onClick={() =>
-                          run("markSaciGorroOffer", { roomCode })
-                            .then(() => setDayActionSent("gorro_offer"))
+                          run("markSaciGorroOffer", { roomCode }, "gorroOffer").then(() =>
+                            setDayActionSent("gorro_offer"),
+                          )
                         }
                       >
-                        {dayActionSent === "gorro_offer" ? "✓ Oferta ativa" : "Gorro Vermelho (oferta)"}
+                        <span className="btn-with-spinner">
+                          {busy("gorroOffer")
+                            ? "enviando…"
+                            : dayActionSent === "gorro_offer"
+                              ? "✓ Oferta ativa"
+                              : "Gorro Vermelho (oferta)"}
+                          <BtnSpinner show={busy("gorroOffer")} />
+                        </span>
                       </button>
                     )}
                     {canShowSaciGorroSwap(myRole, room, myPlayer, resolvedVoteTarget) && (
                       <button
                         type="button"
-                        disabled={loading || dayActionSent === "gorro_swap"}
+                        disabled={anyPending || dayActionSent === "gorro_swap"}
                         className={dayActionSent === "gorro_swap" ? "vote-sent" : undefined}
                         onClick={() =>
-                          run("saciGorroSwap", {
-                            roomCode,
-                            swapWithPlayerId: resolvedVoteTarget,
-                          }).then(() => setDayActionSent("gorro_swap"))
+                          run(
+                            "saciGorroSwap",
+                            {
+                              roomCode,
+                              swapWithPlayerId: resolvedVoteTarget,
+                            },
+                            "gorroSwap",
+                          ).then(() => setDayActionSent("gorro_swap"))
                         }
                       >
-                        {dayActionSent === "gorro_swap" ? "✓ Troca realizada" : "Gorro: trocar de lugar"}
+                        <span className="btn-with-spinner">
+                          {busy("gorroSwap")
+                            ? "enviando…"
+                            : dayActionSent === "gorro_swap"
+                              ? "✓ Troca realizada"
+                              : "Gorro: trocar de lugar"}
+                          <BtnSpinner show={busy("gorroSwap")} />
+                        </span>
                       </button>
                     )}
                   </div>
@@ -2088,10 +2207,14 @@ export function App() {
           </p>
           <button
             type="button"
-            onClick={() => run("brasContinueChoice", { roomCode, endGame: true })}
+            disabled={anyPending}
+            onClick={() => run("brasContinueChoice", { roomCode, endGame: true }, "brasEnd")}
             style={{ marginBottom: 10 }}
           >
-            Encerrar — vencer agora
+            <span className="btn-with-spinner">
+              {busy("brasEnd") ? "aguarda…" : "Encerrar — vencer agora"}
+              <BtnSpinner show={busy("brasEnd")} />
+            </span>
           </button>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <label style={{ fontSize: 13, color: "var(--ink-cream)" }}>
@@ -2099,6 +2222,7 @@ export function App() {
             </label>
             <select
               value={brasChosenRole}
+              disabled={anyPending}
               onChange={(e) => setBrasChosenRole(e.target.value)}
               className="vote-select"
             >
@@ -2108,9 +2232,19 @@ export function App() {
             </select>
             <button
               type="button"
-              onClick={() => run("brasContinueChoice", { roomCode, endGame: false, chosenRole: brasChosenRole })}
+              disabled={anyPending}
+              onClick={() =>
+                run(
+                  "brasContinueChoice",
+                  { roomCode, endGame: false, chosenRole: brasChosenRole },
+                  "brasContinue",
+                )
+              }
             >
-              Continuar como {ROLE_DISPLAY[brasChosenRole] ?? brasChosenRole}
+              <span className="btn-with-spinner">
+                {busy("brasContinue") ? "aguarda…" : `Continuar como ${ROLE_DISPLAY[brasChosenRole] ?? brasChosenRole}`}
+                <BtnSpinner show={busy("brasContinue")} />
+              </span>
             </button>
           </div>
         </div>
@@ -2177,12 +2311,15 @@ export function App() {
                 <button
                   type="button"
                   className="primary-btn"
-                  disabled={loading}
+                  disabled={anyPending}
                   style={{ marginTop: "1rem" }}
-                  onClick={() => run("restartGame", { roomCode })}
+                  onClick={() => run("restartGame", { roomCode }, "restartGame")}
                 >
                   <div className="btn-stack">
-                    <span className="btn-title">{loading ? "reiniciando…" : "Recomeçar"}</span>
+                    <span className="btn-title btn-title-row">
+                      {busy("restartGame") ? "reiniciando…" : "Recomeçar"}
+                      <BtnSpinner show={busy("restartGame")} />
+                    </span>
                     <span className="btn-sub">volta ao lobby com os mesmos jogadores</span>
                   </div>
                   <span className="btn-arrow" aria-hidden>→</span>

@@ -725,6 +725,59 @@ input::placeholder {
   cursor: not-allowed;
 }
 
+.chip-btn--with-spinner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+@keyframes btn-spinner-rot {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.btn-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(243, 233, 210, 0.2);
+  border-top-color: var(--gold-bright);
+  border-radius: 50%;
+  animation: btn-spinner-rot 0.65s linear infinite;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+.primary-btn .btn-spinner {
+  border-color: rgba(26, 18, 12, 0.22);
+  border-top-color: rgba(26, 18, 12, 0.85);
+}
+
+.primary-btn:disabled .btn-spinner {
+  border-color: rgba(26, 18, 12, 0.12);
+  border-top-color: rgba(26, 18, 12, 0.45);
+}
+
+.chip-btn .btn-spinner {
+  width: 11px;
+  height: 11px;
+}
+
+.btn-title-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-with-spinner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
 .code-card-deco {
   margin-top: 14px;
   font-size: 8px;
