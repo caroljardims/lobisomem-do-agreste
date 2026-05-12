@@ -58,6 +58,22 @@ describe("checkCollectiveWin", () => {
     expect(checkCollectiveWin(players, 1, 5)).toBe("criaturas");
   });
 
+  it("Curupira alinhada com moradores conta no mesmo lado que moradores no limiar", () => {
+    const players = {
+      w: snap("w", "lobisomem"),
+      c: snap("c", "curupira", { alignment: "moradores" }),
+    };
+    expect(checkCollectiveWin(players, 1, 5)).toBe("criaturas");
+  });
+
+  it("Brás Cubas não infla o contador de moradores no limiar", () => {
+    const players = {
+      w: snap("w", "lobisomem"),
+      b: snap("b", "bras_cubas", { alignment: "moradores" }),
+    };
+    expect(checkCollectiveWin(players, 1, 5)).toBe("criaturas");
+  });
+
   it("retorna 'criaturas' quando rodada excede maxRounds", () => {
     const players = {
       w: snap("w", "lobisomem"),

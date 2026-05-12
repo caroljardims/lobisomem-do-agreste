@@ -262,10 +262,28 @@ export function resolveDawn(input: DawnResolveInput): DawnResolveResult {
     const t = players[geniAction.action.targetId];
     const lab = isCreatureRole(t.role) ? "criatura" : "morador";
     pushPrivate(geniAction.playerId, `A conversa revela: ${t.name} é ${lab}.`);
+
+    // Romance da Caatinga — só quando Geni usa Confiança (converse) no Cangaceiro; não gasta carga extra
+    if (t.role === "cangaceiro") {
+      const investigatedIds = input.geniInvestigatedIds[geniAction.playerId] ?? [];
+      const parts: string[] = [];
+      for (const pid of investigatedIds) {
+        const inv = players[pid];
+        if (!inv) continue;
+        const nature = isCreatureRole(inv.role) ? "criatura" : "morador";
+        parts.push(`${inv.name} (${nature})`);
+      }
+      const listText =
+        parts.length > 0 ? parts.join(", ") : "ninguém ainda — esta foi a primeira conversa dela na cidade";
+      pushPrivate(
+        geniAction.action.targetId,
+        `Geni passou a noite com você. Ela já sabe sobre: ${listText}.`,
+      );
+    }
   }
 
   const cang = getAction(input.nightActions, "cangaceiro", players);
-  if (cang?.action.targetId && players[cang.action.targetId]) {
+  if (cang?.action.action === "query" && cang.action.targetId && players[cang.action.targetId]) {
     const t = players[cang.action.targetId];
     const geniPid = findPlayerIdByRole(players, "geni");
     const investigated =

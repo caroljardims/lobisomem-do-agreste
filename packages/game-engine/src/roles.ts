@@ -9,11 +9,11 @@ export const ROLE_SIDE: Record<RoleId, Side> = {
   geni: "morador",
   bras_cubas: "neutro",
   cangaceiro: "morador",
-  curupira: "morador",
+  curupira: "neutro",
   doutor: "morador",
   mae_de_santo: "morador",
   delegado: "morador",
-  boitata: "morador",
+  boitata: "neutro",
   cartomante: "morador",
   coronel: "morador",
   padre: "morador",
@@ -28,7 +28,7 @@ export const CREATURE_ROLES: RoleId[] = [
   "iara",
 ];
 
-export const NEUTRAL_ROLES: RoleId[] = ["geni", "bras_cubas", "cangaceiro"];
+export const NEUTRAL_ROLES: RoleId[] = ["curupira", "boitata", "bras_cubas"];
 
 export function isCreatureRole(role: RoleId): boolean {
   return ROLE_SIDE[role] === "criatura";

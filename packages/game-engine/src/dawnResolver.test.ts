@@ -126,4 +126,92 @@ describe("resolveDawn", () => {
     expect(res.players.a.alive).toBe(true);
     expect(res.publicLog.some((e) => e.type === "death")).toBe(false);
   });
+
+  it("Romance da Caatinga: Geni em converse no Cangaceiro envia histórico completo ao Cangaceiro", () => {
+    const geni = basePlayer("g", "Geni", "geni");
+    const cang = basePlayer("c", "Zé", "cangaceiro");
+    const aldeao = basePlayer("a", "Ana", "aldeao");
+    const wolf = basePlayer("w", "Lobo", "lobisomem");
+    const players = { g: geni, c: cang, a: aldeao, w: wolf };
+    const res = resolveDawn({
+      round: 2,
+      now: 1,
+      players,
+      nightActions: {
+        g: { role: "geni", action: "converse", targetId: "c", specialAction: null },
+      },
+      geniInvestigatedIds: { g: ["a", "w", "c"] },
+    });
+    const romance = res.privateLog.c?.find((e) => e.message.includes("passou a noite com você"));
+    expect(romance?.message).toContain("Geni passou a noite com você");
+    expect(romance?.message).toContain("Ana (morador)");
+    expect(romance?.message).toContain("Lobo (criatura)");
+    expect(romance?.message).toContain("Zé (morador)");
+  });
+
+  it("Romance da Caatinga não dispara com charm no Cangaceiro", () => {
+    const geni = basePlayer("g", "Geni", "geni");
+    const cang = basePlayer("c", "Zé", "cangaceiro");
+    const players = { g: geni, c: cang };
+    const res = resolveDawn({
+      round: 1,
+      now: 1,
+      players,
+      nightActions: {
+        g: { role: "geni", action: "charm", targetId: "c", specialAction: null },
+      },
+      geniInvestigatedIds: { g: ["a"] },
+    });
+    expect(res.privateLog.c?.some((e) => e.message.includes("passou a noite com você"))).toBeFalsy();
+  });
+
+  it("Romance da Caatinga não dispara quando Geni conversa com outro alvo", () => {
+    const geni = basePlayer("g", "Geni", "geni");
+    const cang = basePlayer("c", "Zé", "cangaceiro");
+    const aldeao = basePlayer("a", "Ana", "aldeao");
+    const players = { g: geni, c: cang, a: aldeao };
+    const res = resolveDawn({
+      round: 1,
+      now: 1,
+      players,
+      nightActions: {
+        g: { role: "geni", action: "converse", targetId: "a", specialAction: null },
+      },
+      geniInvestigatedIds: { g: ["a"] },
+    });
+    expect(res.privateLog.c?.some((e) => e.message.includes("passou a noite com você"))).toBeFalsy();
+  });
+
+  it("Cangaceiro pass não bloqueia Geni", () => {
+    const geni = basePlayer("g", "Geni", "geni");
+    const cang = basePlayer("c", "Zé", "cangaceiro");
+    const players = { g: geni, c: cang };
+    const res = resolveDawn({
+      round: 1,
+      now: 1,
+      players,
+      nightActions: {
+        c: { role: "cangaceiro", action: "pass", targetId: null, specialAction: null },
+      },
+      geniInvestigatedIds: { g: [] },
+    });
+    expect(res.players.g.blockedNextNight).toBe(false);
+  });
+
+  it("Cangaceiro query sem investigação da Geni bloqueia Geni na próxima noite", () => {
+    const geni = basePlayer("g", "Geni", "geni");
+    const cang = basePlayer("c", "Zé", "cangaceiro");
+    const aldeao = basePlayer("a", "Ana", "aldeao");
+    const players = { g: geni, c: cang, a: aldeao };
+    const res = resolveDawn({
+      round: 1,
+      now: 1,
+      players,
+      nightActions: {
+        c: { role: "cangaceiro", action: "query", targetId: "a", specialAction: null },
+      },
+      geniInvestigatedIds: { g: [] },
+    });
+    expect(res.players.g.blockedNextNight).toBe(true);
+  });
 });

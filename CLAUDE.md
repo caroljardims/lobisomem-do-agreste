@@ -183,18 +183,22 @@ Em implementações Firestore, preferir **subcoleções** para `publicLog` / `pr
 
 | Jogadores | Criaturas | Neutros | Moradores especiais | Aldeões | Brás Cubas |
 |---|---|---|---|---|---|
-| 5 | 1 | 1 | Delegado, Doutor | 1 | Não entra |
-| 7 | 2 | 1 | Delegado, Doutor, Cartomante | 1 | Entra sempre |
-| 9–11 | 3 | 2 | Delegado, Doutor, Cartomante, Coronel | 1–3 | Entra sempre |
-| 12+ | 5 | 2 | Todos os especiais | 1+ | Entra sempre |
+| 5 | 1 | 1 (Curupira, Boitatá ou Brás Cubas — neutros) | Delegado, Doutor | 1 | Não entra |
+| 7 | 2 | 1 (Brás Cubas) | Delegado, Doutor, Cartomante | 1 | Entra sempre |
+| 9–11 | 3 | 2 (Brás + Curupira ou Boitatá, sem duplicar Boitatá da mesa) | Delegado, Doutor, Cartomante, Coronel, Boitatá | 1–3 | Entra sempre |
+| 12+ | variável | 2 (Brás + Curupira) | 8 moradores especiais (sem Padre automático — evita par com Mula) | 1+ | Entra sempre |
 
-**Pares de dependência obrigatória — se um for sorteado, o outro entra:**
-- Mula sem Cabeça ↔ Padre
-- Coronel ↔ Boitatá
-- Geni ↔ Boto Cor-de-Rosa
-- Cangaceiro ↔ Iara
+**Neutros (lado `neutro` no sistema):** Curupira, Boitatá, Brás Cubas. **Geni** e **Cangaceiro** são **moradores** (`morador`).
 
-**Se não houver Aldeão disponível para ceder o slot ao par dependente:** resorteie as criaturas.
+**Pares de dependência (sorteio / mesa):**
+- **Mula ↔ Padre (só num sentido):** se a **Mula** estiver na partida, o **Padre** precisa estar; o **Padre** pode estar **sem** Mula.
+- **Coronel ↔ Boitatá:** se um estiver, o outro entra.
+- **Geni ↔ Boto:** se um estiver, o outro entra.
+- **Cangaceiro ↔ Iara:** se um estiver, o outro entra.
+
+**Vitória coletiva — neutros Curupira e Boitatá:** na primeira noite escolhem alinhamento `moradores` ou `criaturas` e **vencem com o lado escolhido** (contam nesse lado no limiar criaturas vs moradores). **Brás Cubas** não escolhe alinhamento; vitória dele é a regra própria do Tolo.
+
+**Objetivos que citam “todos os moradores”** (ex.: Boto, Padre): contam apenas jogadores com `side` **morador** no segredo (não incluem neutros, mesmo alinhados).
 
 ### Sorteio do porta-voz
 
@@ -517,8 +521,12 @@ Sistema verifica após cada amanhecer e após cada expulsão:
 
 | Arquivo | Responsabilidade |
 |---|---|
-| `index.ts` | Exports de todas as `onCall` functions |
-| `helpers.ts` | Lógica compartilhada: `loadPlayers`, `loadSecrets`, `startNightSequence`, `maybeFinalizeNight`, `finalizeNight`, `finalizeDay`, `processBotNightActions` |
+| `index.ts` | Re-exporta `onCall` de `handlers/` e `setGlobalOptions` |
+| `lib/db.ts` | Inicialização Admin + `db` |
+| `helpers.ts` | `loadPlayers`, `loadSecrets`, `startNightSequence`, `nightRolesInPlay`, `randomCode`, `randomId`, `ROLE_SIDE` |
+| `lib/finalize.ts` | `maybeFinalizeNight`, `finalizeNight`, `finalizeDay` |
+| `lib/bots.ts` | `processBotNightActions` (chamadores devem chamar `maybeFinalizeNight` depois) |
+| `handlers/*.ts` | Callables por domínio (`game`, `night`, `day`, `dayActions`) + `handlers/shared.ts` (`requireAuth`, `findPlayer`) |
 
 **Funções principais:**
 
@@ -532,7 +540,7 @@ Sistema verifica após cada amanhecer e após cada expulsão:
 - `startNight` — (host only) lê `pendingNightRound`, limpa `pendingNightStart`, chama `startNightSequence`
 - `restartGame` — (host only, status `"ended"`) deleta subcoleções via `db.recursiveDelete()`, reseta jogadores e sala para lobby
 - `processBotNightActions` — bots escolhem alvos aleatórios e submetem ações noturnas
-- `findPlayer(players, req)` — helper em `index.ts`: busca jogador por `playerId` (localStorage, estável) antes de fallback para `uid` (pode mudar em re-auth anônima)
+- `findPlayer(players, req)` — helper em `handlers/shared.ts`: busca por `playerId` (localStorage) antes de `uid`
 
 ### UX do frontend (`apps/web/src/App.tsx`)
 

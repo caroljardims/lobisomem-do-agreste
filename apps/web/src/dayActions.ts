@@ -8,6 +8,7 @@ export type DayPlayerFlags = {
   alive?: boolean;
   eliminated?: boolean;
   expelled?: boolean;
+  actionUsed?: boolean;
 };
 
 export function isDayParticipant(p: DayPlayerFlags | undefined): boolean {
@@ -40,7 +41,7 @@ export function canShowCangaceiroTiro(
   myRole: string | null,
   me: DayPlayerFlags | undefined,
 ): boolean {
-  return myRole === "cangaceiro" && isDayParticipant(me);
+  return myRole === "cangaceiro" && isDayParticipant(me) && !me?.actionUsed;
 }
 
 /** Saci marca que há oferta Gorro (estado antes do swap). */
