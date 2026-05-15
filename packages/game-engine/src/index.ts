@@ -8,3 +8,4 @@ export * from "./voteTally.js";
 export * from "./winConditions.js";
 export * from "./copy.js";
 export * from "./scoring.js";
+export * from "./saciGorroTargets.js";

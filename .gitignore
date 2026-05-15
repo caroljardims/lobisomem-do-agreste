@@ -4,6 +4,7 @@ dist
 *.log
 .env
 .env.*
+.env.local
 .DS_Store
 apps/web/dist
 functions/lib

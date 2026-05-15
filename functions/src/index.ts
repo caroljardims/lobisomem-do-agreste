@@ -27,6 +27,24 @@ export {
   coronelStartAccusation,
   coronelAccusationVote,
   cangaceiroTiroCerto,
-  saciGorroSwap,
-  markSaciGorroOffer,
 } from "./handlers/dayActions.js";
+
+export {
+  submitSaciGorroChoice,
+  expireSaciGorro,
+  expireSaciGorroTask,
+} from "./handlers/saciGorro.js";
+
+export {
+  startDebugGame,
+} from "./handlers/debug/game.js";
+
+export {
+  debugAdvancePhase,
+  debugKillPlayer,
+  debugExpelPlayer,
+  debugForceWin,
+  debugResetRound,
+  debugGetPrivateLog,
+  debugSetNightAction,
+} from "./handlers/debug/actions.js";

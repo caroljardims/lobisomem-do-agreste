@@ -61,6 +61,10 @@ export async function processBotNightActions(roomCode: string, round: number): P
       continue;
     }
 
+    if (room.debug === true && Boolean(room.debugSlowMode)) {
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+    }
+
     let targets = alive.filter((p) => p.id !== actor.id);
     if (role === "mae_de_santo") {
       targets = eliminated.filter((p) => p.id !== actor.id);
@@ -168,6 +172,9 @@ export async function processBotNightActions(roomCode: string, round: number): P
   for (const p of alive) {
     if (!botIds.has(p.id)) continue;
     if (secrets[p.id]?.role !== "cangaceiro") continue;
+    if (room.debug === true && Boolean(room.debugSlowMode)) {
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+    }
     const others = alive.filter((x) => x.id !== p.id);
     const pass = others.length === 0 || Math.random() < 0.75;
     const submission: NightActionInput = pass

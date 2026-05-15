@@ -60,6 +60,10 @@ export async function finalizeMvpLedgerIfNeeded(roomCode: string): Promise<void>
   const roomSnap = await roomRef.get();
   const room = roomSnap.data() ?? {};
   if (room.status !== "ended" || room.mvpLedgerApplied === true) return;
+  if (room.debug === true) {
+    await roomRef.update({ mvpLedgerApplied: true });
+    return;
+  }
 
   const winner = String(room.winner ?? "");
   const finalRound = Number(room.round ?? 1);

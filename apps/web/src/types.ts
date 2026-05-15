@@ -29,7 +29,11 @@ export type RoomDoc = DocumentData & {
   pendingNightRound?: number;
   winner?: string | null;
   daySubPhase?: string;
-  pendingSaciGorro?: boolean;
+  pendingSaciGorro?: {
+    saciPlayerId: string;
+    expiresAt: { seconds: number; nanoseconds?: number } | number;
+    round?: number;
+  } | null;
   coronelAccusationTarget?: string;
   revealedRoles?: Record<string, string>;
   /** Vitórias individuais (não encerram a partida sozinhas); ver `individualWinChronicleLine`. */
@@ -45,6 +49,13 @@ export type RoomDoc = DocumentData & {
   geniInvestigatedTargets?: string[];
   /** Congelado em `startGame` (jogadores conectados ao iniciar). */
   gameTablePlayerCount?: number;
+  /** Sala criada via modo debug (localhost). Exclui MVP / histórico público. */
+  debug?: boolean;
+  debugSlowMode?: boolean;
+  debugShowAllRoles?: boolean;
+  debugBotVoteTargets?: Record<string, string>;
+  debugForceMoonPhase?: "crescent" | "full" | string | null;
+  debugConfig?: Record<string, unknown>;
   /** Fim por empate 7+ no placar (criaturas === moradores); texto distinto na crônica e na tela final. */
   collectiveEndKind?: string;
   /** Só mesa de 5: ids de jogadores com papel de lado morador no início (objetivo Curupira/Boitatá). */

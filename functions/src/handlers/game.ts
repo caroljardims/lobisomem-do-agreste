@@ -394,7 +394,7 @@ export const restartGame = onCall(async (req) => {
     saciActedLastNight: false,
     geniInvestigatedTargets: [],
     pendingBrasChoice: false,
-    pendingSaciGorro: false,
+    pendingSaciGorro: FieldValue.delete(),
     botoEnchantedMoradores: [],
     padreCatechizedMoradores: [],
     revealedRoles: {},

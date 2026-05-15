@@ -83,6 +83,7 @@ export async function startNightSequence(roomCode: string, round: number) {
       nightOrderRoles: order,
       nightPendingRoles: order,
       nightReadyPlayerIds: [],
+      pendingSaciGorro: FieldValue.delete(),
     }),
     ...loboUpdates,
   ]);

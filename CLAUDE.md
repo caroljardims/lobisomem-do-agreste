@@ -39,6 +39,11 @@ Sistema de party game remoto baseado em turnos. Jogadores acessam via browser no
   saciActedLastNight: boolean,   // Saci agiu na noite anterior (voto em Brás conta em dobro no dia); derivado em finalizeNight() a partir de nightActions
   geniInvestigatedTargets: string[], // IDs investigados pela Geni nessa noite (acumulados)
   pendingBrasChoice: boolean,    // Brás Cubas foi expulso e precisa escolher
+  pendingSaciGorro: {            // Saci venceu a votação de expulsão e ainda não escolheu substituto
+    saciPlayerId: string,
+    expiresAt: timestamp,        // now + 60s
+    round: number
+  } | null,
   pendingNightStart: boolean,    // expulsão processada, aguardando anfitrião iniciar a noite
   pendingNightRound: number,     // próxima rodada a iniciar quando pendingNightStart for resolvido
   individualWins: [              // vitórias individuais registradas; não encerram a partida
@@ -262,7 +267,7 @@ Se um personagem não está na partida ou está morto/expulso, o sistema pula au
 
 - Opções: selecionar alvo para roubo de habilidade
 - Sistema marca `blockedNextNight: true` no alvo
-- Gorro Vermelho: se o Saci for alvo de expulsão no dia **ou for preso pelo Delegado**, sistema oferece opção de ativar — ele troca de lugar (identidade secreta) com jogador à sua escolha. Uso único.
+- Gorro Vermelho: intercepta automaticamente quando o Saci é o expulso da votação (`actionUsed` ainda false). Saci escolhe em privado quem vai no lugar (todos os vivos exceto ele); janela de 60s com sorteio aleatório se expirar ou desconectar. O substituto é expulso com anúncio normal; Saci permanece na partida. Uso único (`actionUsed: true`).
 - **Aliança involuntária com Brás Cubas:** se o Saci agiu nessa noite e Brás Cubas receber ao menos um voto no dia seguinte, esse voto conta como dois. Sistema aplica silenciosamente.
 
 **Mula sem Cabeça**
@@ -382,7 +387,6 @@ Após todos agirem, o sistema resolve na seguinte ordem antes de publicar qualqu
   - Alvo é Brás Cubas, Mãe de Santo, Cangaceiro ou Boitatá → falha silenciosa
 8. **Mãe de Santo:** ativar `invoked` no jogador escolhido
 9. **Boitatá/Cartomante/Cangaceiro:** registrar resultados nos logs privados; **Delegado:** publicar prisão + motivo no log público
-  - Se Delegado prendeu o Saci → sistema seta `pendingSaciGorro: true`
 10. **Verificar objetivos individuais:**
   - Mula usou Exorcismo no Padre → registrar vitória individual da Mula
     - Iara usou Voz Encantadora no Delegado → registrar vitória individual da Iara
@@ -569,7 +573,8 @@ Vitória por lua cheia: após um amanhecer, se `round > maxRounds` na verificaç
 | `helpers.ts`      | `loadPlayers`, `loadSecrets`, `startNightSequence`, `nightRolesInPlay`, `randomCode`, `randomId`, `ROLE_SIDE`     |
 | `lib/finalize.ts` | `maybeFinalizeNight`, `finalizeNight`, `finalizeDay`                                                              |
 | `lib/bots.ts`     | `processBotNightActions` (chamadores devem chamar `maybeFinalizeNight` depois)                                    |
-| `handlers/*.ts`   | Callables por domínio (`game`, `night`, `day`, `dayActions`) + `handlers/shared.ts` (`requireAuth`, `findPlayer`) |
+| `handlers/*.ts`   | Callables por domínio (`game`, `night`, `day`, `dayActions`, `saciGorro`) + `handlers/shared.ts` (`requireAuth`, `findPlayer`) |
+| `lib/saciGorro.ts` | Gorro Vermelho: intercept em `finalizeDay`, `completeGorroSwap`, `expireSaciGorroIfPending` |
 
 
 **Funções principais:**
@@ -580,7 +585,8 @@ Vitória por lua cheia: após um amanhecer, se `round > maxRounds` na verificaç
 - `maybeFinalizeNight` — verifica se `nightPendingRoles` está vazio **e** todos os vivos estão em `nightReadyPlayerIds`; se sim, chama `finalizeNight`
 - `submitVote` — registra voto; se todos elegíveis votaram → chama `finalizeDay`
 - `finalizeNight` — resolve `resolveDawn()`, aplica resultados, muda `status` para `"day"`, vota bots automaticamente; se só restam bots, chama `finalizeDay()` automaticamente
-- `finalizeDay` — tally de votos, processa expulsão; se nenhum humano vivo → encerra como Apocalipse Robô; **sempre** seta `pendingNightStart: true` ao fim (com expulsão, empate ou sem expulsão); se expulsão → verifica vitória coletiva antes de pausar
+- `finalizeDay` — tally de votos; se Saci vence expulsão e `!actionUsed` → `beginSaciGorroOffer` (pausa); senão processa expulsão; ao fim chama `runPostExpulsionTail` ou `pendingNightStart`
+- `submitSaciGorroChoice` / `expireSaciGorro` — Saci escolhe substituto ou tempo esgota (sorteio); `expireSaciGorroTask` (Cloud Task +60s)
 - `startNight` — (host only) lê `pendingNightRound`, limpa `pendingNightStart`, chama `startNightSequence`
 - `restartGame` — (host only, status `"ended"`) deleta subcoleções via `db.recursiveDelete()`, reseta jogadores e sala para lobby
 - `processBotNightActions` — bots escolhem alvos aleatórios e submetem ações noturnas
@@ -618,13 +624,7 @@ Vitória por lua cheia: após um amanhecer, se `round > maxRounds` na verificaç
 
 ### Questões de design para validar
 
-**1. Saci Gorro na expulsão: ativação manual vs. automática**
-
-Arquivo: functions/src/handlers/dayActions.ts — markSaciGorroOffer 
-
-O Saci precisa chamar markSaciGorroOffer proativamente durante o dia para ativar o Gorro antes de ser expulso. CLAUDE.md diz "sistema oferece opção de ativar" — sugerindo que o sistema oferece automaticamente quando o Saci é expulso. Além disso: se o Saci ativar pendingSaciGorro: true mas não for expulso naquele dia, o flag persiste? Precisa confirmar quando ele é limpo.
-
-**2. Geni + Cangaceiro na mesma noite: Cangaceiro vê alvo investigado nesta noite**
+**1. Geni + Cangaceiro na mesma noite: Cangaceiro vê alvo investigado nesta noite**
 
 Arquivo: functions/src/handlers/night.ts — submitNightAction para Geni
 
@@ -634,6 +634,7 @@ A pergunta é: "já investigou" deve incluir a noite atual ou só noites anterio
 
 ## Concluído
 
+- ✓ Gorro Vermelho — intercepta expulsão do Saci em `finalizeDay`; modal privado 60s; `submitSaciGorroChoice` / `expireSaciGorro` / `expireSaciGorroTask`; substituto expulso com anúncio normal
 - ✓ Botões de ação do dia filtrados por `myRole` — cada jogador só vê as ações do seu personagem (`dayActions.ts`)
 - ✓ Duplicação de log removida do porta-voz — panorama unificado visível a todos
 - ✓ Chat bloqueado para mortos e expulsos — backend rejeita, frontend esconde input; invocados são exceção

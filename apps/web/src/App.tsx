@@ -1,4 +1,7 @@
+import type { RoleId } from "folclore-game-engine";
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -6,14 +9,14 @@ import {
   useState,
 } from "react";
 import { AuthModal } from "./components/AuthModal.js";
+import { SaciGorroModal, type PendingGorro } from "./components/SaciGorroModal.js";
 import { useAuth } from "./context/AuthContext.js";
 import { auth, call } from "./firebase.js";
 import {
   canShowCangaceiroTiro,
   canShowCoronelAccusationVotes,
   canShowCoronelAccuse,
-  canShowSaciGorroOffer,
-  canShowSaciGorroSwap,
+  hasPendingSaciGorro,
 } from "./dayActions.js";
 import {
   ROLE_DISPLAY,
@@ -29,6 +32,9 @@ import { usePlayersCollection } from "./hooks/usePlayersCollection.js";
 import { usePrivateLog } from "./hooks/usePrivateLog.js";
 import { usePublicLog } from "./hooks/usePublicLog.js";
 import { useRoomDocument } from "./hooks/useRoomDocument.js";
+import { useAllSecrets } from "./hooks/useAllSecrets.js";
+import { isLocalDebug } from "./debug/isLocalDebug.js";
+import { DEBUG_ROLE_LABELS } from "./debug/roleOptions.js";
 import { mapCallableError } from "./lib/callableErrors.js";
 import { canBeExpulsionVoteTarget, canSubmitExpulsionVote } from "./lib/playerVote.js";
 import type { PlayerDoc, RoomDoc, View } from "./types.js";
@@ -47,6 +53,9 @@ const LS_GLYPH = "folclore_glyph";
 
 const AVATAR_GLYPHS = ["☽", "✦", "◆", "❖", "✧", "☆", "★", "◉"];
 
+const DebugIntroChromeLazy = lazy(() => import("./debug/DebugIntroChrome.js"));
+const DebugGameChromeLazy = lazy(() => import("./debug/DebugGameChrome.js"));
+
 export function App() {
   const { user, authReady, signOutUser } = useAuth();
   const uid = user?.uid ?? null;
@@ -60,6 +69,8 @@ export function App() {
   const [expected, setExpected] = useState(5);
   const room = useRoomDocument(roomCode);
   const players = usePlayersCollection(roomCode);
+  const secretsEnabled = Boolean(isLocalDebug() && roomCode && room?.debug === true);
+  const debugSecrets = useAllSecrets(roomCode, secretsEnabled);
   const myRole = useMyRole(roomCode, playerId);
   const publicLog = usePublicLog(roomCode);
   const privateLog = usePrivateLog(roomCode, playerId);
@@ -98,6 +109,9 @@ export function App() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
 
+  const [debugSetupOpen, setDebugSetupOpen] = useState(false);
+  const [debugSidebarOpen, setDebugSidebarOpen] = useState(false);
+
   const myPrivate = useMyPlayerPrivate(roomCode, playerId || undefined);
 
   useEffect(() => {
@@ -105,6 +119,19 @@ export function App() {
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
+
+  useEffect(() => {
+    if (!isLocalDebug()) return;
+    const toggle = () => {
+      if (!roomCode) {
+        setDebugSetupOpen((prev) => !prev);
+      } else if (room?.debug === true) {
+        setDebugSidebarOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener("folhetim-debug-toggle", toggle);
+    return () => window.removeEventListener("folhetim-debug-toggle", toggle);
+  }, [roomCode, room?.debug]);
 
   useEffect(() => {
     setNightActionSent(false);
@@ -174,6 +201,18 @@ export function App() {
   }, [view]);
 
   const isHost = !!(room?.hostUid && uid === room.hostUid);
+
+  const formatDebugPlayerOpt = useCallback(
+    (p: PlayerDoc) => {
+      const label = p.name ?? "?";
+      const id = p.id;
+      if (!id || room?.debug !== true || room?.debugShowAllRoles !== true) return label;
+      const rr = debugSecrets[id]?.role as RoleId | undefined;
+      if (!rr) return label;
+      return `${label} — ${DEBUG_ROLE_LABELS[rr] ?? rr}`;
+    },
+    [room?.debug, room?.debugShowAllRoles, debugSecrets],
+  );
 
   const run = useCallback(
     async (
@@ -258,7 +297,20 @@ export function App() {
     setPlayerId("");
     setAmHost(false);
     setView("intro");
+    setDebugSetupOpen(false);
+    setDebugSidebarOpen(false);
   };
+
+  const handleDebugEntered = useCallback((code: string, pid: string) => {
+    const normalized = code.toUpperCase().trim();
+    setRoomCode(normalized);
+    setPlayerId(pid);
+    setAmHost(true);
+    localStorage.setItem(LS_ROOM, normalized);
+    localStorage.setItem(LS_PLAYER, pid);
+    setErr(null);
+    setDebugSetupOpen(false);
+  }, []);
 
   const copyCode = () => {
     copyToClipboard(roomCode);
@@ -487,6 +539,16 @@ export function App() {
         onSuccess={handleAuthSuccess}
       />
     );
+    const debugLandingChrome = isLocalDebug() ? (
+      <Suspense fallback={null}>
+        <DebugIntroChromeLazy
+          panelOpen={debugSetupOpen}
+          onPanelOpenChange={setDebugSetupOpen}
+          onEntered={handleDebugEntered}
+          onApiError={setErr}
+        />
+      </Suspense>
+    ) : null;
     if (view === "intro") {
       return (
         <>
@@ -646,6 +708,7 @@ export function App() {
             </div>
           </div>
           </div>
+          {debugLandingChrome}
           {authModal}
         </>
       );
@@ -711,6 +774,7 @@ export function App() {
             </div>
           </div>
         </div>
+        {debugLandingChrome}
         {authModal}
         </>
       );
@@ -757,6 +821,7 @@ export function App() {
             </div>
           </div>
         </div>
+        {debugLandingChrome}
         {authModal}
         </>
       );
@@ -823,6 +888,7 @@ export function App() {
             </div>
           </div>
         </div>
+        {debugLandingChrome}
         {authModal}
         </>
       );
@@ -882,10 +948,25 @@ export function App() {
     setRouteHash("");
   };
 
+  const isDebugSession = !!(room && isLocalDebug() && room.debug === true);
+
   return (
     <>
+      {isDebugSession && room && (
+        <Suspense fallback={null}>
+          <DebugGameChromeLazy
+            roomCode={roomCode}
+            room={room}
+            players={players}
+            secrets={debugSecrets}
+            sidebarOpen={debugSidebarOpen}
+            onSidebarToggle={() => setDebugSidebarOpen((prev) => !prev)}
+            onCallableError={(m) => setErr(m)}
+          />
+        </Suspense>
+      )}
       <div
-        className="page"
+        className={`page${isDebugSession ? " page--debug" : ""}`}
         style={hashRanking || hashAccount ? { display: "none" } : undefined}
       >
       <div className="top-bar">
@@ -1171,7 +1252,7 @@ export function App() {
                         .filter((p) => p.id !== playerId && p.alive !== false && !p.eliminated && !p.expelled)
                         .map((p) => (
                           <option key={p.id} value={p.id}>
-                            {p.name}
+                            {formatDebugPlayerOpt(p)}
                           </option>
                         ))}
                     </select>
@@ -1263,7 +1344,7 @@ export function App() {
                         <select value={nightTarget} onChange={(e) => setNightTarget(e.target.value)}>
                           <option value="">—</option>
                           {filteredTargetPool.map((p) => (
-                            <option key={p.id} value={p.id}>{p.name}</option>
+                            <option key={p.id} value={p.id}>{formatDebugPlayerOpt(p)}</option>
                           ))}
                         </select>
                       </>
@@ -1356,7 +1437,7 @@ export function App() {
                       <option value="">— ninguém / passar —</option>
                       {targetPool.map((p) => (
                         <option key={p.id} value={p.id}>
-                          {p.name}
+                          {formatDebugPlayerOpt(p)}
                         </option>
                       ))}
                     </select>
@@ -1521,7 +1602,7 @@ export function App() {
                         .filter((p) => p.id !== playerId && canBeExpulsionVoteTarget(p))
                         .map((p) => (
                           <option key={p.id} value={p.id}>
-                            {p.name}
+                            {formatDebugPlayerOpt(p)}
                           </option>
                         ))}
                     </select>
@@ -1561,7 +1642,7 @@ export function App() {
                     </button>
                   </div>
                 )}
-                {isHost && room.pendingNightStart && (
+                {isHost && room.pendingNightStart && !hasPendingSaciGorro(room) && !room.pendingBrasChoice && (
                   <div className="day-section vote-block">
                     <button
                       type="button"
@@ -1660,7 +1741,7 @@ export function App() {
                         .filter((p) => p.id !== playerId && p.alive !== false && !p.eliminated && !p.expelled)
                         .map((p) => (
                           <option key={p.id} value={p.id}>
-                            {p.name}
+                            {formatDebugPlayerOpt(p)}
                           </option>
                         ))}
                     </select>
@@ -1728,65 +1809,31 @@ export function App() {
                     </div>
                   </div>
                 )}
-                {(canShowSaciGorroOffer(myRole, room, myPlayer) ||
-                  canShowSaciGorroSwap(myRole, room, myPlayer, resolvedVoteTarget)) && (
-                  <div className="row day-actions-row day-section">
-                    {canShowSaciGorroOffer(myRole, room, myPlayer) && (
-                      <button
-                        type="button"
-                        disabled={anyPending || dayActionSent === "gorro_offer"}
-                        className={dayActionSent === "gorro_offer" ? "vote-sent" : undefined}
-                        onClick={() =>
-                          void run("markSaciGorroOffer", { roomCode }, "gorroOffer")
-                            .then(() => setDayActionSent("gorro_offer"))
-                            .catch(() => {})
-                        }
-                      >
-                        <span className="btn-with-spinner">
-                          {busy("gorroOffer")
-                            ? "enviando…"
-                            : dayActionSent === "gorro_offer"
-                              ? "✓ Oferta ativa"
-                              : "Gorro Vermelho (oferta)"}
-                          <BtnSpinner show={busy("gorroOffer")} />
-                        </span>
-                      </button>
-                    )}
-                    {canShowSaciGorroSwap(myRole, room, myPlayer, resolvedVoteTarget) && (
-                      <button
-                        type="button"
-                        disabled={anyPending || dayActionSent === "gorro_swap"}
-                        className={dayActionSent === "gorro_swap" ? "vote-sent" : undefined}
-                        onClick={() =>
-                          void run(
-                            "saciGorroSwap",
-                            {
-                              roomCode,
-                              swapWithPlayerId: resolvedVoteTarget,
-                            },
-                            "gorroSwap",
-                          )
-                            .then(() => setDayActionSent("gorro_swap"))
-                            .catch(() => {})
-                        }
-                      >
-                        <span className="btn-with-spinner">
-                          {busy("gorroSwap")
-                            ? "enviando…"
-                            : dayActionSent === "gorro_swap"
-                              ? "✓ Troca realizada"
-                              : "Gorro: trocar de lugar"}
-                          <BtnSpinner show={busy("gorroSwap")} />
-                        </span>
-                      </button>
-                    )}
-                  </div>
-                )}
               </div>
             );
           })()}
         </div>
       )}
+
+      {myRole === "saci" &&
+        playerId &&
+        room?.pendingSaciGorro &&
+        typeof room.pendingSaciGorro === "object" &&
+        room.pendingSaciGorro.saciPlayerId === playerId && (
+          <SaciGorroModal
+            open
+            pending={room.pendingSaciGorro as PendingGorro}
+            players={players}
+            saciPlayerId={playerId}
+            onSubmit={(targetPlayerId) =>
+              run("submitSaciGorroChoice", { roomCode, targetPlayerId }, "gorroChoice").then(() => undefined)
+            }
+            onExpire={() =>
+              run("expireSaciGorro", { roomCode }, "gorroExpire").then(() => undefined)
+            }
+            busy={busy("gorroChoice") || busy("gorroExpire")}
+          />
+        )}
 
       {room?.pendingBrasChoice && myRole === "bras_cubas" && (
         <div className="game-card">

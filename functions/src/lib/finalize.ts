@@ -13,6 +13,7 @@ import { loadPlayers, loadSecrets } from "../helpers.js";
 import { finalizeMvpLedgerIfNeeded } from "./endGameScoring.js";
 import { grantAldeaoObjectiveIfMoradoresWon, grantObjectiveMvp } from "./playerPrivateScore.js";
 import { scoreBrasRoundTease, scoreMvpAtDawn, scoreMvpVotesAfterDay } from "./mvpDawnAndVoteScoring.js";
+import { beginSaciGorroOffer, runPostExpulsionTail } from "./saciGorro.js";
 
 type LoadedPlayer = Awaited<ReturnType<typeof loadPlayers>>[number];
 type SecretsMap = Awaited<ReturnType<typeof loadSecrets>>;
@@ -131,7 +132,7 @@ function scheduleFiveTableNeutralObjectiveUpdates(
 }
 
 /** Se houver vencedor coletivo, encerra a sala e devolve true. */
-async function tryEndGameCollective(
+export async function tryEndGameCollective(
   roomCode: string,
   round: number,
   roomData: Record<string, unknown>,
@@ -141,7 +142,14 @@ async function tryEndGameCollective(
   const [snaps, sec] = await Promise.all([loadPlayers(roomCode), loadSecrets(roomCode)]);
   const winPlayers = buildWinPlayerSnapshots(snaps, sec);
   const tpc = Number(roomData.gameTablePlayerCount ?? 0) || snaps.length;
-  const winDetail = checkCollectiveWinDetailed(winPlayers, round, maxR, tpc);
+  let checkRound = round;
+  if (
+    roomData.debug === true &&
+    (roomData.debugForceMoonPhase as string | undefined) === "full"
+  ) {
+    checkRound = Math.max(round, maxR + 1);
+  }
+  const winDetail = checkCollectiveWinDetailed(winPlayers, checkRound, maxR, tpc);
   const w = winDetail.winner;
   if (!w) return false;
 
@@ -348,9 +356,6 @@ export async function finalizeNight(roomCode: string, round: number) {
     }
   }
 
-  const saciId = players.find((p) => secrets[p.id]?.role === "saci")?.id;
-  const saciJailed = saciId ? Boolean(res.players[saciId]?.jailed) : false;
-
   batch.update(roomRef, {
     status: "day",
     phase: "day",
@@ -364,7 +369,6 @@ export async function finalizeNight(roomCode: string, round: number) {
     individualWins: wins,
     botoEnchantedMoradores,
     padreCatechizedMoradores,
-    ...(saciJailed ? { pendingSaciGorro: true } : {}),
   });
 
   const openRef = roomRef.collection("publicLogEntries").doc();
@@ -477,10 +481,19 @@ export async function finalizeNight(roomCode: string, round: number) {
     const aliveNow = Object.values(res.players).filter((p) => p.alive && !p.eliminated && !p.expelled);
     const aliveHumans = aliveNow.filter((p) => !botIds.has(p.id));
     const botVotes: Record<string, string | null> = {};
+    const debugVoteMap = (room.debugBotVoteTargets as Record<string, string> | undefined) ?? {};
     for (const p of aliveNow) {
       if (!botIds.has(p.id) || p.seduced || p.jailed) continue;
       const targets = aliveHumans.length > 0 ? aliveNow.filter((t) => t.id !== p.id) : [];
-      botVotes[p.id] = targets.length > 0 ? targets[Math.floor(Math.random() * targets.length)].id : null;
+      const forcedTarget = debugVoteMap[p.id];
+      const forceOk =
+        room.debug === true && forcedTarget && targets.some((t) => t.id === forcedTarget);
+      botVotes[p.id] =
+        targets.length === 0
+          ? null
+          : forceOk
+            ? forcedTarget!
+            : targets[Math.floor(Math.random() * targets.length)].id;
     }
     if (Object.keys(botVotes).length > 0) {
       await roomRef.collection("votes").doc(String(round)).set(
@@ -601,6 +614,15 @@ export async function finalizeDay(roomCode: string, round: number) {
     roleByPlayerId,
   });
 
+  if (tally.expelledId) {
+    const tallyRole = secrets[tally.expelledId]?.role;
+    const tallyPlayer = players.find((p) => p.id === tally.expelledId);
+    if (tallyRole === "saci" && tallyPlayer && !tallyPlayer.actionUsed) {
+      await beginSaciGorroOffer(roomCode, round, tally.expelledId, players);
+      return;
+    }
+  }
+
   const batch = db.batch();
   if (tally.expelledId) {
     const expelled = players.find((p) => p.id === tally.expelledId)!;
@@ -647,51 +669,13 @@ export async function finalizeDay(roomCode: string, round: number) {
     if (k === "updatedAt") continue;
     voteRecord[k] = v == null || v === "" ? null : String(v);
   }
-  await scoreMvpVotesAfterDay(roomCode, round, voteRecord, tally.expelledId ?? null, players, secrets).catch(console.error);
-  await scoreBrasRoundTease(roomCode, round, voteRecord, brasId, tally.expelledId).catch(console.error);
-  if (tally.expelledId && secrets[tally.expelledId]?.role === "bras_cubas") {
-    await grantObjectiveMvp(roomCode, tally.expelledId, round).catch(console.error);
-  }
-  if (tally.expelledId && secrets[tally.expelledId]?.role === "padre") {
-    const mulaP = players.find((p) => secrets[p.id]?.role === "mula");
-    if (mulaP) await grantObjectiveMvp(roomCode, mulaP.id, round).catch(console.error);
-  }
-
-  if (tally.expelledId && secrets[tally.expelledId]?.role === "bras_cubas") {
-    const brasPlayer = players.find((p) => p.id === tally.expelledId);
-    if (brasPlayer?.isBot) {
-      const revealedRoles: Record<string, string> = {};
-      for (const p of players) {
-        const r = secrets[p.id]?.role;
-        if (r) revealedRoles[p.id] = r;
-      }
-      await Promise.all([
-        roomRef.update({
-          status: "ended",
-          phase: "ended",
-          winner: brasPlayer.id,
-          pendingBrasChoice: false,
-          votingOpen: false,
-          revealedRoles,
-          individualWins: FieldValue.arrayUnion({
-            playerId: brasPlayer.id,
-            role: "bras_cubas",
-            type: "bras_tolo_encerra",
-            round,
-            timestamp: Date.now(),
-          }),
-        }),
-        roomRef.collection("players").doc(brasPlayer.id).update({ individualObjectiveMet: true }),
-      ]);
-      await finalizeMvpLedgerIfNeeded(roomCode).catch(console.error);
+  if (tally.expelledId) {
+    await runPostExpulsionTail(roomCode, round, tally.expelledId, voteRecord, brasId);
+  } else {
+    if (await tryEndGameCollective(roomCode, round, room)) {
+      return;
     }
-    return;
+    const nextRound = round + 1;
+    await roomRef.update({ pendingNightStart: true, pendingNightRound: nextRound });
   }
-
-  if (await tryEndGameCollective(roomCode, round, room)) {
-    return;
-  }
-
-  const nextRound = round + 1;
-  await roomRef.update({ pendingNightStart: true, pendingNightRound: nextRound });
 }

@@ -24,6 +24,7 @@ await esbuild.build({
     "firebase-functions/v2",
     "firebase-functions/v2/https",
     "firebase-functions/v2/scheduler",
+    "firebase-functions/v2/tasks",
     "firebase-functions/logger",
   ],
 });

@@ -70,7 +70,7 @@ export const ROLE_LORE: Record<string, string | LoreRich> = {
         kind: "kv",
         title: "Gorro Vermelho (especial)",
         content:
-          "Se um jogador tentar prendê-lo ou expulsá-lo, pode invocar um redemoinho: troca de lugar secretamente com outro jogador à sua escolha.",
+          "Se a cidade votar pela sua expulsão, o Gorro intercepta: você escolhe em segredo quem vai no seu lugar (60 segundos). A cidade só vê a expulsão do substituto — ninguém sabe que você escapou.",
       },
       {
         kind: "aside",

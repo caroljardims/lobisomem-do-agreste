@@ -1,7 +1,14 @@
 /** Campos da sala usados na UI de ações do dia (alinhar com `functions/src/index.ts`). */
 export type DayRoomFlags = {
   daySubPhase?: string;
-  pendingSaciGorro?: boolean;
+  pendingSaciGorro?:
+    | {
+        saciPlayerId: string;
+        expiresAt: unknown;
+        round?: number;
+      }
+    | boolean
+    | null;
 };
 
 export type DayPlayerFlags = {
@@ -14,6 +21,11 @@ export type DayPlayerFlags = {
 export function isDayParticipant(p: DayPlayerFlags | undefined): boolean {
   if (!p) return false;
   return p.alive !== false && !p.eliminated && !p.expelled;
+}
+
+export function hasPendingSaciGorro(room: DayRoomFlags | undefined): boolean {
+  const p = room?.pendingSaciGorro;
+  return p != null && typeof p === "object" && "saciPlayerId" in p;
 }
 
 /** Coronel inicia acusação formal (fora de uma votação de acusação já aberta). */
@@ -42,28 +54,4 @@ export function canShowCangaceiroTiro(
   me: DayPlayerFlags | undefined,
 ): boolean {
   return myRole === "cangaceiro" && isDayParticipant(me) && !me?.actionUsed;
-}
-
-/** Saci marca que há oferta Gorro (estado antes do swap). */
-export function canShowSaciGorroOffer(
-  myRole: string | null,
-  room: DayRoomFlags,
-  me: DayPlayerFlags | undefined,
-): boolean {
-  return myRole === "saci" && isDayParticipant(me) && !room.pendingSaciGorro;
-}
-
-/** Saci escolhe com quem trocar após oferta ativa. */
-export function canShowSaciGorroSwap(
-  myRole: string | null,
-  room: DayRoomFlags,
-  me: DayPlayerFlags | undefined,
-  swapTargetId: string,
-): boolean {
-  return (
-    myRole === "saci" &&
-    isDayParticipant(me) &&
-    Boolean(room.pendingSaciGorro) &&
-    Boolean(swapTargetId)
-  );
 }

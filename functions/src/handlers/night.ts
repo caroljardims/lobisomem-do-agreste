@@ -234,6 +234,8 @@ export const startNight = onCall(async (req) => {
   if (!room.pendingNightStart) throw new HttpsError("failed-precondition", "Noite ainda não pronta para iniciar.");
 
   const nextRound = Number(room.pendingNightRound ?? (Number(room.round ?? 1) + 1));
+  const { expireSaciGorroIfPending } = await import("../lib/saciGorro.js");
+  await expireSaciGorroIfPending(code);
   await roomRef.update({ pendingNightStart: false, pendingNightRound: null });
   await startNightSequence(code, nextRound);
   await processBotNightActions(code, nextRound);

@@ -324,35 +324,3 @@ export const cangaceiroTiroCerto = onCall(async (req) => {
   return { hit: creature, consulted, ended: Boolean(w) };
 });
 
-export const saciGorroSwap = onCall(async (req) => {
-  requireAuth(req);
-  const code = String(req.data?.roomCode ?? "").toUpperCase().trim();
-  const withId = String(req.data?.swapWithPlayerId ?? "");
-  const roomRef = db.collection("rooms").doc(code);
-  const roomSnap = await roomRef.get();
-  if (!roomSnap.data()?.pendingSaciGorro) throw new HttpsError("failed-precondition", "Sem oferta ativa.");
-
-  const [players, secrets] = await Promise.all([loadPlayers(code), loadSecrets(code)]);
-  const me = findPlayer(players, req);
-  if (!me || secrets[me.id]?.role !== "saci") throw new HttpsError("permission-denied", "Apenas Saci.");
-
-  const batch = db.batch();
-  const mySecret = { ...secrets[me.id] };
-  const otherSecret = { ...secrets[withId] };
-  batch.set(roomRef.collection("secrets").doc(me.id), otherSecret);
-  batch.set(roomRef.collection("secrets").doc(withId), mySecret);
-  batch.update(roomRef, { pendingSaciGorro: false });
-  await batch.commit();
-  return { ok: true };
-});
-
-export const markSaciGorroOffer = onCall(async (req) => {
-  requireAuth(req);
-  const code = String(req.data?.roomCode ?? "").toUpperCase().trim();
-  const roomRef = db.collection("rooms").doc(code);
-  const [players, secrets] = await Promise.all([loadPlayers(code), loadSecrets(code)]);
-  const me = findPlayer(players, req);
-  if (!me || secrets[me.id]?.role !== "saci") throw new HttpsError("permission-denied", "Apenas Saci.");
-  await roomRef.update({ pendingSaciGorro: true });
-  return { ok: true };
-});
