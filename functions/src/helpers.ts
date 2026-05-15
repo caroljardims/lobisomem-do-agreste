@@ -2,6 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { NIGHT_ACTION_ORDER, ROLE_SIDE } from "folclore-game-engine";
 import type { RoleId } from "folclore-game-engine";
 import { db } from "./lib/db.js";
+import { grantObjectiveMvp } from "./lib/playerPrivateScore.js";
 
 export { db } from "./lib/db.js";
 
@@ -19,7 +20,8 @@ export function randomId(): string {
 
 export async function loadPlayers(roomCode: string) {
   const snap = await db.collection("rooms").doc(roomCode).collection("players").get();
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Array<
+  /** `id` no payload não pode sobrescrever o id do documento — senão updates/batch apontam para doc errado. */
+  return snap.docs.map((d) => ({ ...d.data(), id: d.id })) as Array<
     Record<string, unknown> & { id: string; uid: string; name?: string }
   >;
 }
@@ -66,6 +68,7 @@ export async function startNightSequence(roomCode: string, round: number) {
             timestamp: Date.now(),
           }),
         }),
+        grantObjectiveMvp(roomCode, loboPlayer.id, round),
       );
     }
   }

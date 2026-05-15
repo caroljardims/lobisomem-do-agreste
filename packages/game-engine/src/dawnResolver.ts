@@ -2,6 +2,7 @@ import type {
   DawnResolveInput,
   DawnResolveResult,
   IndividualWinEntry,
+  NightActionInput,
   PlayerDawnState,
   PrivateLogEntry,
   PublicLogEntry,
@@ -45,6 +46,22 @@ function invertAlignment(label: "criatura" | "morador"): "criatura" | "morador" 
   return label === "criatura" ? "morador" : "criatura";
 }
 
+/** Bloqueio trazido do fim da noite anterior (Saci ou consulta do Cangaceiro). */
+function priorNightStolenAbilityByPlayer(input: DawnResolveInput): Map<string, "saci" | "cangaceiro"> {
+  const m = new Map<string, "saci" | "cangaceiro">();
+  for (const [id, p] of Object.entries(input.players)) {
+    if (p.blockedNextNight) {
+      m.set(id, p.nightAbilityBlockSource === "cangaceiro" ? "cangaceiro" : "saci");
+    }
+  }
+  return m;
+}
+
+function passOnlyNightSubmission(a: NightActionInput): boolean {
+  if (a.action === "pass") return true;
+  return a.role === "delegado" && a.action === "jail" && !a.targetId;
+}
+
 /**
  * Resolve o amanhecer conforme ordem do CLAUDE.md (efeitos visíveis + segredos).
  */
@@ -59,6 +76,7 @@ export function resolveDawn(input: DawnResolveInput): DawnResolveResult {
     players[id].jailed = false;
     players[id].enchanted = false;
     players[id].blockedNextNight = false;
+    players[id].nightAbilityBlockSource = null;
     players[id].invoked = false;
     players[id].silenced = false;
     players[id].silencedRounds = 0;
@@ -77,21 +95,32 @@ export function resolveDawn(input: DawnResolveInput): DawnResolveResult {
     privateLog[playerId].push(e);
   };
 
+  const stolenFromPrior = priorNightStolenAbilityByPlayer(input);
+  const stolen = (playerId: string) => stolenFromPrior.has(playerId);
+
   // --- 1. Compute protected targets (Curupira + Doutor + Geni Charme de Verdade) ---
   const protectedTargets = new Set<string>();
   const cur = getAction(input.nightActions, "curupira", players);
-  if (cur?.action.targetId) protectedTargets.add(cur.action.targetId);
+  if (cur?.action.targetId && !stolen(cur.playerId)) protectedTargets.add(cur.action.targetId);
   const doc = getAction(input.nightActions, "doutor", players);
-  if (doc?.action.targetId) protectedTargets.add(doc.action.targetId);
+  if (doc?.action.targetId && !stolen(doc.playerId)) protectedTargets.add(doc.action.targetId);
   const geniAction = getAction(input.nightActions, "geni", input.players);
-  if (geniAction?.action.action === "charm" && geniAction.action.targetId) {
+  if (
+    geniAction?.action.action === "charm" &&
+    geniAction.action.targetId &&
+    !stolen(geniAction.playerId)
+  ) {
     protectedTargets.add(geniAction.action.targetId);
   }
 
   // --- 2. Padre — catechize (protection from Mula/Iara this night) ---
   const padreAction = getAction(input.nightActions, "padre", input.players);
   const catechizedThisNight = new Set<string>();
-  if (padreAction?.action.targetId && players[padreAction.action.targetId]) {
+  if (
+    padreAction?.action.targetId &&
+    players[padreAction.action.targetId] &&
+    !stolen(padreAction.playerId)
+  ) {
     const catTarget = players[padreAction.action.targetId];
     catTarget.catechized = true;
     catechizedThisNight.add(padreAction.action.targetId);
@@ -99,14 +128,28 @@ export function resolveDawn(input: DawnResolveInput): DawnResolveResult {
 
   // --- 3. Saci — block next night (fails if target protected) ---
   const saci = getAction(input.nightActions, "saci", players);
-  if (saci?.action.targetId && players[saci.action.targetId] && !protectedTargets.has(saci.action.targetId)) {
-    players[saci.action.targetId].blockedNextNight = true;
+  if (
+    saci &&
+    !stolen(saci.playerId) &&
+    saci.action.targetId &&
+    players[saci.action.targetId] &&
+    !protectedTargets.has(saci.action.targetId)
+  ) {
+    const victim = players[saci.action.targetId]!;
+    victim.blockedNextNight = true;
+    victim.nightAbilityBlockSource = "saci";
   }
 
   // --- 4. Mula — terrorize or exorcize (fails if protected or catechized) ---
   const mula = getAction(input.nightActions, "mula", input.players);
-  if (mula?.action.targetId && players[mula.action.targetId] &&
-      !protectedTargets.has(mula.action.targetId) && !catechizedThisNight.has(mula.action.targetId)) {
+  if (
+    mula &&
+    !stolen(mula.playerId) &&
+    mula.action.targetId &&
+    players[mula.action.targetId] &&
+    !protectedTargets.has(mula.action.targetId) &&
+    !catechizedThisNight.has(mula.action.targetId)
+  ) {
     const t = players[mula.action.targetId];
     if (mula.action.action === "exorcize") {
       t.alive = false;
@@ -140,14 +183,26 @@ export function resolveDawn(input: DawnResolveInput): DawnResolveResult {
 
   // --- 5. Boto — enchant (fails if protected) ---
   const boto = getAction(input.nightActions, "boto", input.players);
-  if (boto?.action.targetId && players[boto.action.targetId] && !protectedTargets.has(boto.action.targetId)) {
+  if (
+    boto &&
+    !stolen(boto.playerId) &&
+    boto.action.targetId &&
+    players[boto.action.targetId] &&
+    !protectedTargets.has(boto.action.targetId)
+  ) {
     players[boto.action.targetId].enchanted = true;
   }
 
   // --- 6. Iara — seduce or Voz Encantadora (fails if protected or catechized) ---
   const iara = getAction(input.nightActions, "iara", input.players);
-  if (iara?.action.targetId && players[iara.action.targetId] &&
-      !protectedTargets.has(iara.action.targetId) && !catechizedThisNight.has(iara.action.targetId)) {
+  if (
+    iara &&
+    !stolen(iara.playerId) &&
+    iara.action.targetId &&
+    players[iara.action.targetId] &&
+    !protectedTargets.has(iara.action.targetId) &&
+    !catechizedThisNight.has(iara.action.targetId)
+  ) {
     const t = players[iara.action.targetId];
     if (iara.action.action === "eliminate_special") {
       t.alive = false;
@@ -175,7 +230,7 @@ export function resolveDawn(input: DawnResolveInput): DawnResolveResult {
 
   const wolf = getAction(input.nightActions, "lobisomem", input.players);
   let biteAnnounced = false;
-  if (wolf?.action.targetId) {
+  if (wolf?.action.targetId && !stolen(wolf.playerId)) {
     const tid = wolf.action.targetId;
     const target = players[tid];
     if (target) {
@@ -218,7 +273,7 @@ export function resolveDawn(input: DawnResolveInput): DawnResolveResult {
   }
 
   const mae = getAction(input.nightActions, "mae_de_santo", input.players);
-  if (mae?.action.targetId && players[mae.action.targetId]) {
+  if (mae?.action.targetId && players[mae.action.targetId] && !stolen(mae.playerId)) {
     const t = players[mae.action.targetId];
     if (!t.alive && t.eliminated) {
       t.invoked = true;
@@ -232,7 +287,7 @@ export function resolveDawn(input: DawnResolveInput): DawnResolveResult {
   }
 
   const cart = getAction(input.nightActions, "cartomante", input.players);
-  if (cart?.action.targetId && players[cart.action.targetId]) {
+  if (cart?.action.targetId && players[cart.action.targetId] && !stolen(cart.playerId)) {
     const t = players[cart.action.targetId];
     let label = alignmentLabel(ROLE_SIDE[t.role]);
     if (t.role === "curupira") label = invertAlignment(label);
@@ -240,7 +295,7 @@ export function resolveDawn(input: DawnResolveInput): DawnResolveResult {
   }
 
   const boi = getAction(input.nightActions, "boitata", input.players);
-  if (boi?.action.targetId && players[boi.action.targetId]) {
+  if (boi?.action.targetId && players[boi.action.targetId] && !stolen(boi.playerId)) {
     const t = players[boi.action.targetId];
     let label = alignmentLabel(ROLE_SIDE[t.role]);
     if (t.role === "curupira") label = invertAlignment(label);
@@ -248,18 +303,36 @@ export function resolveDawn(input: DawnResolveInput): DawnResolveResult {
   }
 
   const del = getAction(input.nightActions, "delegado", input.players);
-  if (del?.action.targetId && players[del.action.targetId]) {
-    const t = players[del.action.targetId];
-    t.jailed = true;
-    const reason = del.action.specialAction?.trim();
-    const msg = reason
-      ? `O Delegado ordenou a prisão de ${t.name}. Motivo: ${reason}.`
-      : `O Delegado ordenou a prisão de ${t.name}.`;
-    publicLog.push({ round: input.round, type: "special", message: msg, timestamp: input.now });
+  if (del && players[del.playerId]) {
+    const dPlayer = players[del.playerId]!;
+    const isPass =
+      del.action.action === "pass" || (del.action.action === "jail" && !del.action.targetId);
+    if (isPass) {
+      dPlayer.delegadoLastJailedId = null;
+    } else if (
+      !stolen(del.playerId) &&
+      del.action.action === "jail" &&
+      del.action.targetId &&
+      players[del.action.targetId]
+    ) {
+      const t = players[del.action.targetId]!;
+      t.jailed = true;
+      dPlayer.delegadoLastJailedId = del.action.targetId;
+      const reason = del.action.specialAction?.trim();
+      const msg = reason
+        ? `O Delegado ordenou a prisão de ${t.name}. Motivo: ${reason}.`
+        : `O Delegado ordenou a prisão de ${t.name}.`;
+      publicLog.push({ round: input.round, type: "special", message: msg, timestamp: input.now });
+    }
   }
 
   // Geni: converse = investigate; charm = already handled in protectedTargets above
-  if (geniAction?.action.action === "converse" && geniAction.action.targetId && players[geniAction.action.targetId]) {
+  if (
+    geniAction?.action.action === "converse" &&
+    geniAction.action.targetId &&
+    players[geniAction.action.targetId] &&
+    !stolen(geniAction.playerId)
+  ) {
     const t = players[geniAction.action.targetId];
     const lab = isCreatureRole(t.role) ? "criatura" : "morador";
     pushPrivate(geniAction.playerId, `A conversa revela: ${t.name} é ${lab}.`);
@@ -284,7 +357,12 @@ export function resolveDawn(input: DawnResolveInput): DawnResolveResult {
   }
 
   const cang = getAction(input.nightActions, "cangaceiro", players);
-  if (cang?.action.action === "query" && cang.action.targetId && players[cang.action.targetId]) {
+  if (
+    cang?.action.action === "query" &&
+    cang.action.targetId &&
+    players[cang.action.targetId] &&
+    !stolen(cang.playerId)
+  ) {
     const t = players[cang.action.targetId];
     const geniPid = findPlayerIdByRole(players, "geni");
     const investigated =
@@ -293,7 +371,9 @@ export function resolveDawn(input: DawnResolveInput): DawnResolveResult {
       const lab = isCreatureRole(t.role) ? "criatura" : "morador";
       pushPrivate(cang.playerId, `Consulta: ${t.name} é ${lab}.`);
     } else if (geniPid) {
-      players[geniPid].blockedNextNight = true;
+      const g = players[geniPid]!;
+      g.blockedNextNight = true;
+      g.nightAbilityBlockSource = "cangaceiro";
     }
   }
 
@@ -313,9 +393,19 @@ export function resolveDawn(input: DawnResolveInput): DawnResolveResult {
   else if (publicLog.some((e) => e.type === "terror")) dawnSummary = "terror";
   else if (publicLog.some((e) => e.type === "invocation")) dawnSummary = "invocation";
 
-  if (doc?.action.targetId) {
+  if (doc?.action.targetId && !stolen(doc.playerId)) {
     const d = players[doc.playerId];
     if (d) d.doctorLastTargetId = doc.action.targetId;
+  }
+
+  for (const [pid, src] of stolenFromPrior) {
+    const act = input.nightActions[pid];
+    if (!act || passOnlyNightSubmission(act)) continue;
+    const msg =
+      src === "saci"
+        ? "O Saci Pererê roubou sua habilidade nesta noite. Sua ação não surtiu efeito."
+        : "A consulta do Cangaceiro ecoou de forma estranha. Sua ação noturna não surtiu efeito nesta noite.";
+    pushPrivate(pid, msg);
   }
 
   return { players, publicLog, privateLog, individualWins, dawnSummary };

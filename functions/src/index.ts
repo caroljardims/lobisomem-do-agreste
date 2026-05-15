@@ -12,7 +12,13 @@ export {
   restartGame,
 } from "./handlers/game.js";
 
-export { submitNightAction, markNightReady, startNight, submitCangaceiroConsult } from "./handlers/night.js";
+export {
+  submitNightAction,
+  markNightReady,
+  startNight,
+  submitCangaceiroConsult,
+  submitNightSuspicion,
+} from "./handlers/night.js";
 
 export { submitVote, sendChatMessage, advanceDay } from "./handlers/day.js";
 

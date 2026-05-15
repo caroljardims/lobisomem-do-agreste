@@ -214,5 +214,55 @@ describe("resolveDawn", () => {
       geniInvestigatedIds: { g: [] },
     });
     expect(res.players.g.blockedNextNight).toBe(true);
+    expect(res.players.g.nightAbilityBlockSource).toBe("cangaceiro");
+  });
+
+  it("Delegado com roubo do Saci na noite anterior não aplica prisão e recebe aviso privado", () => {
+    const del = { ...basePlayer("d", "Del", "delegado"), blockedNextNight: true, nightAbilityBlockSource: "saci" as const };
+    const a = basePlayer("a", "Ana", "aldeao");
+    const players = { d: del, a };
+    const res = resolveDawn({
+      round: 2,
+      now: 1,
+      players,
+      nightActions: {
+        d: { role: "delegado", action: "jail", targetId: "a", specialAction: "motivo" },
+      },
+      geniInvestigatedIds: {},
+    });
+    expect(res.players.a.jailed).toBe(false);
+    expect(res.privateLog.d?.some((e) => e.message.includes("Saci Pererê"))).toBe(true);
+  });
+
+  it("Delegado pass com roubo do Saci ainda zera delegadoLastJailedId", () => {
+    const del = { ...basePlayer("d", "Del", "delegado"), delegadoLastJailedId: "a" };
+    const a = basePlayer("a", "Ana", "aldeao");
+    const players = { d: del, a };
+    const res = resolveDawn({
+      round: 2,
+      now: 1,
+      players,
+      nightActions: { d: { role: "delegado", action: "pass", targetId: null, specialAction: null } },
+      geniInvestigatedIds: {},
+    });
+    expect(res.players.d.delegadoLastJailedId).toBeNull();
+    expect(res.players.a.jailed).toBe(false);
+  });
+
+  it("Delegado jail atualiza delegadoLastJailedId e prende", () => {
+    const del = basePlayer("d", "Del", "delegado");
+    const a = basePlayer("a", "Ana", "aldeao");
+    const players = { d: del, a };
+    const res = resolveDawn({
+      round: 1,
+      now: 1,
+      players,
+      nightActions: {
+        d: { role: "delegado", action: "jail", targetId: "a", specialAction: "comportamento suspeito" },
+      },
+      geniInvestigatedIds: {},
+    });
+    expect(res.players.a.jailed).toBe(true);
+    expect(res.players.d.delegadoLastJailedId).toBe("a");
   });
 });

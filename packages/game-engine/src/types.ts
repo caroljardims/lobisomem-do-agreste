@@ -60,6 +60,8 @@ export interface PlayerDawnState {
   eliminated: boolean;
   expelled: boolean;
   blockedNextNight: boolean;
+  /** Quem impôs o bloqueio na próxima noite (persistido com `blockedNextNight`). */
+  nightAbilityBlockSource?: "saci" | "cangaceiro" | null;
   silenced: boolean;
   silencedRounds: number;
   enchanted: boolean;
@@ -69,6 +71,8 @@ export interface PlayerDawnState {
   invoked: boolean;
   /** Alvo salvo pelo Doutor na última noite (para não repetir). */
   doctorLastTargetId: string | null;
+  /** Delegado: última pessoa presa (não pode prender a mesma em noites consecutivas). */
+  delegadoLastJailedId?: string | null;
   /** Lobisomem já usou morder nesta partida. */
   wolfBiteUsed: boolean;
   /** Mula já usou Exorcismo da Vingança nesta partida. */

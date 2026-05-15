@@ -11,7 +11,7 @@ export function usePlayersCollection(roomCode: string): PlayerDoc[] {
       return;
     }
     return onSnapshot(collection(db, "rooms", roomCode, "players"), (snap) =>
-      setPlayers(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as PlayerDoc)),
+      setPlayers(snap.docs.map((d) => ({ ...d.data(), id: d.id }) as PlayerDoc)),
     );
   }, [roomCode]);
   return players;

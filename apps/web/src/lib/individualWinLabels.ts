@@ -10,6 +10,10 @@ const INDIVIDUAL_WIN_COPY: Record<string, string> = {
   cangaceiro_iara: "O tiro encontrou a Iara — vitória do Cangaceiro.",
   bras_tolo_encerra: "O Tolo riu por último — Brás Cubas encerra em glória.",
   coronel_acusacao_boitata: "A acusação formal acertou o fogo — vitória do Coronel sobre o Boitatá.",
+  curupira_cinco_objetivo:
+    "Mesa de cinco: cumpriu o pacto com a mata e sobreviveu — vitória pessoal da Curupira.",
+  boitata_cinco_objetivo:
+    "Mesa de cinco: leu bem os sinais da cidade e sobreviveu — vitória pessoal do Boitatá.",
 };
 
 export type IndividualWinEntry = {

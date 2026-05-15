@@ -29,10 +29,13 @@ import { usePlayersCollection } from "./hooks/usePlayersCollection.js";
 import { usePrivateLog } from "./hooks/usePrivateLog.js";
 import { usePublicLog } from "./hooks/usePublicLog.js";
 import { useRoomDocument } from "./hooks/useRoomDocument.js";
+import { mapCallableError } from "./lib/callableErrors.js";
 import { canBeExpulsionVoteTarget, canSubmitExpulsionVote } from "./lib/playerVote.js";
 import type { PlayerDoc, RoomDoc, View } from "./types.js";
 import { BtnSpinner } from "./components/BtnSpinner.js";
 import { EndScreen } from "./components/screens/EndScreen.js";
+import { AccountView, RankingView } from "./components/LifetimeScreens.js";
+import { useMyPlayerPrivate } from "./hooks/useMyPlayerPrivate.js";
 
 function copyToClipboard(text: string) {
   navigator.clipboard?.writeText(text).catch(() => {});
@@ -75,6 +78,11 @@ export function App() {
   const [cangConsultTarget, setCangConsultTarget] = useState("");
   const [tiroCertoTarget, setTiroCertoTarget] = useState("");
   const [tiroPreview, setTiroPreview] = useState<{ consulted: boolean; hint?: string } | null>(null);
+  const [routeHash, setRouteHash] = useState(() =>
+    typeof window !== "undefined" ? window.location.hash : "",
+  );
+  const [suspicionTarget, setSuspicionTarget] = useState("");
+  const [suspicionSent, setSuspicionSent] = useState(false);
 
   // Entry flow
   const [view, setView] = useState<View>("intro");
@@ -89,6 +97,20 @@ export function App() {
   const postAuthTarget = useRef<"create" | "join" | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
+
+  const myPrivate = useMyPlayerPrivate(roomCode, playerId || undefined);
+
+  useEffect(() => {
+    const onHash = () => setRouteHash(window.location.hash);
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
+  useEffect(() => {
+    setNightActionSent(false);
+    setSuspicionSent(false);
+    setSuspicionTarget("");
+  }, [room?.status, room?.round]);
 
   useEffect(() => {
     if (!authReady || user) return;
@@ -166,11 +188,7 @@ export function App() {
         const res = await c({ playerId, ...data });
         return res.data as Record<string, unknown>;
       } catch (e: unknown) {
-        const msg =
-          e && typeof e === "object" && "message" in e
-            ? String((e as { message: string }).message)
-            : String(e);
-        setErr(msg);
+        setErr(mapCallableError(e));
         throw e;
       } finally {
         setPendingAction(null);
@@ -196,11 +214,7 @@ export function App() {
         count: Math.max(1, Math.min(expected, 10) - players.length),
       });
     } catch (e: unknown) {
-      const msg =
-        e && typeof e === "object" && "message" in e
-          ? String((e as { message: string }).message)
-          : String(e);
-      setErr(msg);
+      setErr(mapCallableError(e));
     } finally {
       setPendingAction(null);
     }
@@ -208,25 +222,33 @@ export function App() {
 
   const createRoom = async () => {
     localStorage.setItem(LS_GLYPH, glyph);
-    setAmHost(true);
-    const r = await run("createRoom", { name, expectedPlayerCount: expected }, "createRoom");
-    const code = String(r.roomCode ?? "");
-    const pid = String(r.playerId ?? "");
-    setRoomCode(code);
-    setPlayerId(pid);
-    localStorage.setItem(LS_ROOM, code);
-    localStorage.setItem(LS_PLAYER, pid);
+    try {
+      const r = await run("createRoom", { name, expectedPlayerCount: expected }, "createRoom");
+      setAmHost(true);
+      const code = String(r.roomCode ?? "");
+      const pid = String(r.playerId ?? "");
+      setRoomCode(code);
+      setPlayerId(pid);
+      localStorage.setItem(LS_ROOM, code);
+      localStorage.setItem(LS_PLAYER, pid);
+    } catch {
+      setAmHost(false);
+    }
   };
 
   const joinRoom = async () => {
     localStorage.setItem(LS_GLYPH, glyph);
     const code = joinCodeArr.join("").toUpperCase().trim();
-    const r = await run("joinRoom", { roomCode: code, name }, "joinRoom");
-    const pid = String(r.playerId ?? "");
-    setRoomCode(code);
-    setPlayerId(pid);
-    localStorage.setItem(LS_ROOM, code);
-    localStorage.setItem(LS_PLAYER, pid);
+    try {
+      const r = await run("joinRoom", { roomCode: code, name }, "joinRoom");
+      const pid = String(r.playerId ?? "");
+      setRoomCode(code);
+      setPlayerId(pid);
+      localStorage.setItem(LS_ROOM, code);
+      localStorage.setItem(LS_PLAYER, pid);
+    } catch {
+      /* setErr em run */
+    }
   };
 
   const leave = () => {
@@ -306,7 +328,9 @@ export function App() {
     return (p.name?.[0] ?? "?").toUpperCase();
   };
 
-  const startGame = () => run("startGame", { roomCode }, "startGame");
+  const startGame = () => {
+    void run("startGame", { roomCode }, "startGame").catch(() => {});
+  };
 
   const roleActionOptions = useMemo(() => {
     const r = myRole ?? "";
@@ -331,21 +355,46 @@ export function App() {
       return opts;
     }
     if (r === "geni") {
-      const opts = [{ value: "converse", label: "conversar" }];
+      const opts: { value: string; label: string }[] = [{ value: "converse", label: "conversar" }];
       if (!me?.geniCharmUsed) opts.push({ value: "charm", label: "Charme de Verdade (uso único)" });
+      opts.push({ value: "pass", label: "passar (sem conversar nem charme)" });
+      return opts;
+    }
+    if (r === "delegado") {
+      return [
+        { value: "jail", label: "prender" },
+        { value: "pass", label: "passar (sem prisão)" },
+      ];
+    }
+    const round = Number(room?.round ?? 1);
+    if (r === "cartomante") {
+      const opts = [{ value: "investigate", label: "investigar" }];
+      if (round > 1) opts.push({ value: "pass", label: "passar (sem investigar)" });
+      return opts;
+    }
+    if (r === "boitata") {
+      const opts = [{ value: "investigate", label: "investigar" }];
+      if (round > 1) opts.push({ value: "pass", label: "passar (sem investigar)" });
       return opts;
     }
     const single: Record<string, { value: string; label: string }> = {
       saci:       { value: "steal",       label: "roubar habilidade" },
       boto:       { value: "enchant",     label: "enfeitiçar" },
       curupira:   { value: "protect",     label: "proteger" },
-      doutor:     { value: "save",        label: "salvar" },
-      mae_de_santo: { value: "invoke",    label: "invocar" },
-      boitata:    { value: "investigate", label: "investigar" },
-      cartomante: { value: "investigate", label: "investigar" },
-      delegado:   { value: "jail",        label: "prender" },
       padre:      { value: "catechize",   label: "catequizar" },
     };
+    if (r === "doutor") {
+      return [
+        { value: "save", label: "salvar" },
+        { value: "pass", label: "passar (não salvar ninguém)" },
+      ];
+    }
+    if (r === "mae_de_santo") {
+      return [
+        { value: "invoke", label: "invocar" },
+        { value: "pass", label: "passar (sem invocar)" },
+      ];
+    }
     if (single[r]) return [single[r]];
     return [];
   }, [myRole, players, playerId, room?.round]);
@@ -364,6 +413,15 @@ export function App() {
   useEffect(() => {
     if (room?.round === 1 && room?.status === "night") setLoreOpen(true);
   }, [room?.round, room?.status]);
+
+  useEffect(() => {
+    if (room?.status !== "night") return;
+    const passRoles = ["geni", "doutor", "mae_de_santo", "cartomante", "boitata", "delegado"] as const;
+    if (myRole && (passRoles as readonly string[]).includes(myRole) && nightAction === "pass") {
+      setNightTarget("");
+      setNightSpecialAction(null);
+    }
+  }, [nightAction, myRole, room?.status]);
 
   // ── Shared UI fragments ──
 
@@ -456,9 +514,13 @@ export function App() {
                     <div className="landing-user-dropdown" role="menu">
                       <button
                         type="button"
-                        className="landing-user-dropdown-item landing-user-dropdown-item--muted"
-                        disabled
+                        className="landing-user-dropdown-item"
                         role="menuitem"
+                        onClick={() => {
+                          window.location.hash = "#/minha-conta";
+                          setRouteHash("#/minha-conta");
+                          setUserMenuOpen(false);
+                        }}
                       >
                         Minha conta
                       </button>
@@ -813,8 +875,19 @@ export function App() {
     </div>
   );
 
+  const hashRanking = routeHash === "#/ranking";
+  const hashAccount = routeHash === "#/minha-conta";
+  const clearHash = () => {
+    window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    setRouteHash("");
+  };
+
   return (
-    <div className="page">
+    <>
+      <div
+        className="page"
+        style={hashRanking || hashAccount ? { display: "none" } : undefined}
+      >
       <div className="top-bar">
         <button type="button" className="back-link" onClick={leave}>
           ← sair
@@ -826,6 +899,19 @@ export function App() {
           <span className="dot-online" />
           {players.length}
         </span>
+        {user && (
+          <button
+            type="button"
+            className="back-link"
+            style={{ marginLeft: "auto" }}
+            onClick={() => {
+              window.location.hash = "#/ranking";
+              setRouteHash("#/ranking");
+            }}
+          >
+            Ranking
+          </button>
+        )}
       </div>
 
       {err && <p className="error">{err}</p>}
@@ -936,10 +1022,10 @@ export function App() {
                     className="chip-btn chip-btn--with-spinner"
                     disabled={anyPending || !room}
                     onClick={() =>
-                      run("setExpectedPlayerCount", {
+                      void run("setExpectedPlayerCount", {
                         roomCode,
                         expectedPlayerCount: expected,
-                      }, "setExpected")
+                      }, "setExpected").catch(() => {})
                     }
                   >
                     atualizar vagas
@@ -976,6 +1062,14 @@ export function App() {
                   : `Rodada ${room.round ?? 1}`}
             </strong>
           </p>
+          {typeof room.maxRounds === "number" && room.maxRounds > 0 && (
+            <p className="muted" style={{ marginTop: "0.35rem", lineHeight: 1.45 }}>
+              <strong>Lua cheia:</strong> rodada atual <strong>{room.round ?? 1}</strong> — o relógio da cidade
+              permite até <strong>{room.maxRounds}</strong> rodadas numeradas. Se, após um amanhecer, a rodada
+              passar de <strong>{room.maxRounds}</strong>, o folclore vence na hora (vitória coletiva das
+              criaturas), mesmo com moradores vivos.
+            </p>
+          )}
           {myRole && <p className="muted">Seu personagem: {ROLE_DISPLAY[myRole] ?? myRole}</p>}
 
           {myRole && ROLE_LORE[myRole] && (
@@ -1000,12 +1094,35 @@ export function App() {
           {room.status === "night" && (() => {
             const meNight = players.find((p) => p.id === playerId);
             const myRoleIsPending = !!(myRole && room.nightPendingRoles?.includes(myRole));
-            const needsAlignment = (myRole === "curupira" || myRole === "boitata") && room.round === 1;
+            const needsAlignment =
+              (myRole === "curupira" || myRole === "boitata") &&
+              room.round === 1 &&
+              Number(room.gameTablePlayerCount) !== 5;
             const targetPool = myRole === "mae_de_santo"
               ? players.filter((p) => p.eliminated && !p.expelled)
               : players.filter((p) => p.id !== playerId && p.alive !== false && !p.eliminated && !p.expelled);
-            const needsJailReason = myRole === "delegado";
-            const canSubmit = !anyPending && !!nightTarget && (!needsAlignment || !!nightSpecialAction) && (!needsJailReason || !!nightSpecialAction?.trim());
+            const needsJailReason = myRole === "delegado" && nightAction === "jail";
+            const delegadoPass = myRole === "delegado" && nightAction === "pass";
+            const nightRolePass =
+              nightAction === "pass" &&
+              (myRole === "geni" ||
+                myRole === "doutor" ||
+                myRole === "mae_de_santo" ||
+                myRole === "cartomante" ||
+                myRole === "boitata");
+            const hideNightTarget = delegadoPass || nightRolePass;
+            let canSubmit = false;
+            if (!anyPending) {
+              if (delegadoPass || nightRolePass) canSubmit = true;
+              else if (myRole === "delegado" && nightAction === "jail") {
+                canSubmit = !!nightTarget && !!nightSpecialAction?.trim();
+              } else {
+                canSubmit =
+                  !!nightTarget &&
+                  (!needsAlignment || !!nightSpecialAction) &&
+                  (!needsJailReason || !!nightSpecialAction?.trim());
+              }
+            }
             const canMarkNightReady =
               !myRoleIsPending &&
               roleActionOptions.length === 0 &&
@@ -1017,6 +1134,24 @@ export function App() {
               meNight?.alive !== false &&
               !meNight?.eliminated &&
               !meNight?.expelled;
+            const usedTargets = new Set(myPrivate?.investigationTargetsUsed ?? []);
+            const geniKnown = new Set(room.geniInvestigatedTargets ?? []);
+            const blockInvestigation =
+              myRole === "geni"
+                ? geniKnown
+                : myRole === "cartomante" || myRole === "boitata"
+                  ? usedTargets
+                  : new Set<string>();
+            const lastJailedId = (meNight?.delegadoLastJailedId as string | undefined) ?? "";
+            const filteredTargetPool = targetPool
+              .filter((p) => !blockInvestigation.has(p.id ?? ""))
+              .filter((p) => !(myRole === "delegado" && lastJailedId && p.id === lastJailedId));
+            const showSuspicion =
+              !!meNight &&
+              meNight.alive !== false &&
+              !meNight.eliminated &&
+              !meNight.expelled &&
+              (!myRoleIsPending || nightActionSent);
 
             return (
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
@@ -1046,11 +1181,13 @@ export function App() {
                         className="chip-btn chip-btn--with-spinner"
                         disabled={anyPending || !cangConsultTarget || busy("cangConsult")}
                         onClick={() =>
-                          run(
+                          void run(
                             "submitCangaceiroConsult",
                             { roomCode, targetId: cangConsultTarget },
                             "cangConsult",
-                          ).then(() => setCangConsultTarget(""))
+                          )
+                            .then(() => setCangConsultTarget(""))
+                            .catch(() => {})
                         }
                       >
                         <span className="btn-with-spinner">
@@ -1062,7 +1199,9 @@ export function App() {
                         type="button"
                         className="chip-btn chip-btn--with-spinner"
                         disabled={anyPending || busy("cangPass")}
-                        onClick={() => run("submitCangaceiroConsult", { roomCode, pass: true }, "cangPass")}
+                        onClick={() =>
+                          void run("submitCangaceiroConsult", { roomCode, pass: true }, "cangPass").catch(() => {})
+                        }
                       >
                         <span className="btn-with-spinner">
                           {busy("cangPass") ? "…" : "Passar"}
@@ -1099,6 +1238,13 @@ export function App() {
                         </select>
                       </>
                     )}
+                    {hideNightTarget && (
+                      <p className="muted" style={{ margin: 0 }}>
+                        {delegadoPass
+                          ? "Prender é opcional. Você não pode prender a mesma pessoa em duas noites seguidas."
+                          : "Sem alvo esta noite — sua vez será concluída e a noite poderá seguir."}
+                      </p>
+                    )}
                     {needsJailReason && (
                       <>
                         <label>Motivo da prisão (será lido publicamente)</label>
@@ -1111,20 +1257,24 @@ export function App() {
                         />
                       </>
                     )}
-                    <label>Alvo</label>
-                    <select value={nightTarget} onChange={(e) => setNightTarget(e.target.value)}>
-                      <option value="">—</option>
-                      {targetPool.map((p) => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                      ))}
-                    </select>
+                    {!hideNightTarget && (
+                      <>
+                        <label>Alvo</label>
+                        <select value={nightTarget} onChange={(e) => setNightTarget(e.target.value)}>
+                          <option value="">—</option>
+                          {filteredTargetPool.map((p) => (
+                            <option key={p.id} value={p.id}>{p.name}</option>
+                          ))}
+                        </select>
+                      </>
+                    )}
                     <button
                       type="button"
                       disabled={!canSubmit || anyPending || nightActionSent}
                       className={nightActionSent ? "vote-sent" : undefined}
                       style={{ marginTop: "4px" }}
                       onClick={() =>
-                        run(
+                        void run(
                           "submitNightAction",
                           {
                             roomCode,
@@ -1133,7 +1283,9 @@ export function App() {
                             specialAction: nightSpecialAction,
                           },
                           "nightAction",
-                        ).then(() => setNightActionSent(true))
+                        )
+                          .then(() => setNightActionSent(true))
+                          .catch(() => {})
                       }
                     >
                       <span className="btn-with-spinner">
@@ -1161,9 +1313,9 @@ export function App() {
                         disabled={anyPending || nightActionSent}
                         className={nightActionSent ? "vote-sent" : undefined}
                         onClick={() =>
-                          run("markNightReady", { roomCode }, "markNightReady").then(() =>
-                            setNightActionSent(true),
-                          )
+                          void run("markNightReady", { roomCode }, "markNightReady")
+                            .then(() => setNightActionSent(true))
+                            .catch(() => {})
                         }
                       >
                         <span className="btn-with-spinner">
@@ -1177,6 +1329,75 @@ export function App() {
                       </button>
                     )}
                   </>
+                )}
+                {showSuspicion && (
+                  <div className="game-card">
+                    <p className="muted" style={{ marginTop: 0 }}>
+                      Sua suspeita desta noite (opcional). Só você vê — ninguém mais na sala tem acesso.
+                    </p>
+                    {(myRole === "cartomante" ||
+                      myRole === "boitata" ||
+                      myRole === "geni") &&
+                      (myPrivate?.investigationTargetsUsed?.length ||
+                        (myRole === "geni" && (room.geniInvestigatedTargets?.length ?? 0) > 0)) && (
+                      <p className="muted" style={{ fontSize: "0.85rem" }}>
+                        Alvos já usados em investigação/prisão/conversa (não podem repetir):{" "}
+                        {(myRole === "geni" ? room.geniInvestigatedTargets : myPrivate?.investigationTargetsUsed)
+                          ?.map((id: string) => players.find((x) => x.id === id)?.name ?? id)
+                          .join(", ")}
+                      </p>
+                    )}
+                    <label className="field-label">Desconfio de:</label>
+                    <select
+                      className="vote-select"
+                      value={suspicionTarget}
+                      onChange={(e) => setSuspicionTarget(e.target.value)}
+                    >
+                      <option value="">— ninguém / passar —</option>
+                      {targetPool.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="row" style={{ marginTop: 8, gap: 8, flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        className="chip-btn chip-btn--with-spinner"
+                        disabled={anyPending || suspicionSent || busy("suspicionPass")}
+                        onClick={() =>
+                          void run("submitNightSuspicion", { roomCode, pass: true }, "suspicionPass")
+                            .then(() => setSuspicionSent(true))
+                            .catch(() => {})
+                        }
+                      >
+                        <span className="btn-with-spinner">
+                          {busy("suspicionPass") ? "…" : "Passar"}
+                          <BtnSpinner show={busy("suspicionPass")} />
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        className="chip-btn chip-btn--with-spinner"
+                        disabled={anyPending || !suspicionTarget || suspicionSent || busy("suspicionSend")}
+                        onClick={() =>
+                          void run(
+                            "submitNightSuspicion",
+                            { roomCode, targetId: suspicionTarget },
+                            "suspicionSend",
+                          )
+                            .then(() => setSuspicionSent(true))
+                            .catch(() => {})
+                        }
+                      >
+                        <span className="btn-with-spinner">
+                          {busy("suspicionSend") ? "enviando…" : "Confirmar suspeita"}
+                          <BtnSpinner show={busy("suspicionSend")} />
+                        </span>
+                      </button>
+                    </div>
+                    {suspicionSent && <p className="muted">✓ Registrado para o amanhecer.</p>}
+                  </div>
                 )}
               </div>
             );
@@ -1274,9 +1495,9 @@ export function App() {
                         className="btn-with-spinner"
                         disabled={!chatText.trim() || anyPending}
                         onClick={() =>
-                          run("sendChatMessage", { roomCode, text: chatText }, "chatSend").then(() =>
-                            setChatText(""),
-                          )
+                          void run("sendChatMessage", { roomCode, text: chatText }, "chatSend")
+                            .then(() => setChatText(""))
+                            .catch(() => {})
                         }
                       >
                         {busy("chatSend") ? "enviando…" : "Enviar"}
@@ -1309,7 +1530,9 @@ export function App() {
                       className={hasVoted ? "vote-sent" : undefined}
                       disabled={hasVoted || anyPending}
                       onClick={() =>
-                        run("submitVote", { roomCode, targetId: resolvedVoteTarget || null }, "vote")
+                        void run("submitVote", { roomCode, targetId: resolvedVoteTarget || null }, "vote").catch(
+                          () => {},
+                        )
                       }
                     >
                       <span className="btn-with-spinner">
@@ -1325,7 +1548,7 @@ export function App() {
                       type="button"
                       className={allVotesIn ? "primary-btn" : undefined}
                       disabled={anyPending || !allVotesIn}
-                      onClick={() => run("advanceDay", { roomCode }, "advanceDay")}
+                      onClick={() => void run("advanceDay", { roomCode }, "advanceDay").catch(() => {})}
                     >
                       <span className="btn-with-spinner">
                         {busy("advanceDay")
@@ -1344,7 +1567,7 @@ export function App() {
                       type="button"
                       className="primary-btn"
                       disabled={anyPending}
-                      onClick={() => run("startNight", { roomCode }, "startNight")}
+                      onClick={() => void run("startNight", { roomCode }, "startNight").catch(() => {})}
                     >
                       <span className="btn-with-spinner" style={{ width: "100%" }}>
                         {busy("startNight") ? "recolhendo…" : "Toque de recolher"}
@@ -1360,14 +1583,16 @@ export function App() {
                       disabled={!resolvedVoteTarget || anyPending || dayActionSent === "coronel"}
                       className={dayActionSent === "coronel" ? "vote-sent" : undefined}
                       onClick={() =>
-                        run(
+                        void run(
                           "coronelStartAccusation",
                           {
                             roomCode,
                             targetId: resolvedVoteTarget,
                           },
                           "coronelAccuse",
-                        ).then(() => setDayActionSent("coronel"))
+                        )
+                          .then(() => setDayActionSent("coronel"))
+                          .catch(() => {})
                       }
                     >
                       <span className="btn-with-spinner">
@@ -1389,9 +1614,9 @@ export function App() {
                       disabled={anyPending || dayActionSent === "coronel_vote"}
                       className={dayActionSent === "coronel_vote" ? "vote-sent" : undefined}
                       onClick={() =>
-                        run("coronelAccusationVote", { roomCode, yes: true }, "coronelVoteYes").then(() =>
-                          setDayActionSent("coronel_vote"),
-                        )
+                        void run("coronelAccusationVote", { roomCode, yes: true }, "coronelVoteYes")
+                          .then(() => setDayActionSent("coronel_vote"))
+                          .catch(() => {})
                       }
                     >
                       <span className="btn-with-spinner">
@@ -1403,9 +1628,9 @@ export function App() {
                       type="button"
                       disabled={anyPending || dayActionSent === "coronel_vote"}
                       onClick={() =>
-                        run("coronelAccusationVote", { roomCode, yes: false }, "coronelVoteNo").then(() =>
-                          setDayActionSent("coronel_vote"),
-                        )
+                        void run("coronelAccusationVote", { roomCode, yes: false }, "coronelVoteNo")
+                          .then(() => setDayActionSent("coronel_vote"))
+                          .catch(() => {})
                       }
                     >
                       <span className="btn-with-spinner">
@@ -1452,15 +1677,19 @@ export function App() {
                         className="chip-btn chip-btn--with-spinner"
                         disabled={!tiroCertoTarget || anyPending || busy("tiroPrev")}
                         onClick={async () => {
-                          const r = await run(
-                            "cangaceiroTiroCerto",
-                            { roomCode, targetId: tiroCertoTarget, stage: "preview" },
-                            "tiroPrev",
-                          );
-                          setTiroPreview({
-                            consulted: Boolean(r.consulted),
-                            hint: (r.hint as string | undefined) ?? undefined,
-                          });
+                          try {
+                            const r = await run(
+                              "cangaceiroTiroCerto",
+                              { roomCode, targetId: tiroCertoTarget, stage: "preview" },
+                              "tiroPrev",
+                            );
+                            setTiroPreview({
+                              consulted: Boolean(r.consulted),
+                              hint: (r.hint as string | undefined) ?? undefined,
+                            });
+                          } catch {
+                            /* setErr em run */
+                          }
                         }}
                       >
                         <span className="btn-with-spinner">
@@ -1473,14 +1702,18 @@ export function App() {
                         className="chip-btn chip-btn--with-spinner"
                         disabled={!tiroCertoTarget || anyPending || dayActionSent === "tiro" || busy("tiroCommit")}
                         onClick={async () => {
-                          await run(
-                            "cangaceiroTiroCerto",
-                            { roomCode, targetId: tiroCertoTarget, stage: "commit" },
-                            "tiroCommit",
-                          );
-                          setDayActionSent("tiro");
-                          setTiroCertoTarget("");
-                          setTiroPreview(null);
+                          try {
+                            await run(
+                              "cangaceiroTiroCerto",
+                              { roomCode, targetId: tiroCertoTarget, stage: "commit" },
+                              "tiroCommit",
+                            );
+                            setDayActionSent("tiro");
+                            setTiroCertoTarget("");
+                            setTiroPreview(null);
+                          } catch {
+                            /* setErr em run */
+                          }
                         }}
                       >
                         <span className="btn-with-spinner">
@@ -1504,9 +1737,9 @@ export function App() {
                         disabled={anyPending || dayActionSent === "gorro_offer"}
                         className={dayActionSent === "gorro_offer" ? "vote-sent" : undefined}
                         onClick={() =>
-                          run("markSaciGorroOffer", { roomCode }, "gorroOffer").then(() =>
-                            setDayActionSent("gorro_offer"),
-                          )
+                          void run("markSaciGorroOffer", { roomCode }, "gorroOffer")
+                            .then(() => setDayActionSent("gorro_offer"))
+                            .catch(() => {})
                         }
                       >
                         <span className="btn-with-spinner">
@@ -1525,14 +1758,16 @@ export function App() {
                         disabled={anyPending || dayActionSent === "gorro_swap"}
                         className={dayActionSent === "gorro_swap" ? "vote-sent" : undefined}
                         onClick={() =>
-                          run(
+                          void run(
                             "saciGorroSwap",
                             {
                               roomCode,
                               swapWithPlayerId: resolvedVoteTarget,
                             },
                             "gorroSwap",
-                          ).then(() => setDayActionSent("gorro_swap"))
+                          )
+                            .then(() => setDayActionSent("gorro_swap"))
+                            .catch(() => {})
                         }
                       >
                         <span className="btn-with-spinner">
@@ -1561,7 +1796,7 @@ export function App() {
           <button
             type="button"
             disabled={anyPending}
-            onClick={() => run("brasContinueChoice", { roomCode, endGame: true }, "brasEnd")}
+            onClick={() => void run("brasContinueChoice", { roomCode, endGame: true }, "brasEnd").catch(() => {})}
             style={{ marginBottom: 10 }}
           >
             <span className="btn-with-spinner">
@@ -1587,11 +1822,11 @@ export function App() {
               type="button"
               disabled={anyPending}
               onClick={() =>
-                run(
+                void run(
                   "brasContinueChoice",
                   { roomCode, endGame: false, chosenRole: brasChosenRole },
                   "brasContinue",
-                )
+                ).catch(() => {})
               }
             >
               <span className="btn-with-spinner">
@@ -1623,5 +1858,8 @@ export function App() {
       )}
 
     </div>
+      {hashRanking && <RankingView user={user} onClose={clearHash} />}
+      {hashAccount && <AccountView user={user} onClose={clearHash} />}
+    </>
   );
 }

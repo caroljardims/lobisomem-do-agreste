@@ -530,12 +530,15 @@ Para **“Todas as criaturas cumpriram objetivos individuais”**, contam apenas
 ## Lua cheia — número máximo de rodadas
 
 
-| Jogadores | Rodadas máximas |
-| --------- | --------------- |
-| 5         | 4               |
+| Jogadores | Rodadas máximas (`maxRounds`) |
+| --------- | ------------------------------- |
+| 5         | 7               |
 | 7         | 5               |
 | 9–11      | 6               |
 | 12+       | 7               |
+
+
+Vitória por lua cheia: após um amanhecer, se `round > maxRounds` na verificação coletiva, as criaturas vencem na hora (não depende de haver exatamente zero moradores).
 
 
 ---

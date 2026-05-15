@@ -1777,3 +1777,102 @@ input::placeholder {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* ── MVP / ranking / conta ── */
+
+.page--account {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: var(--bg-deep, #1a1510);
+  overflow: auto;
+}
+
+.mvp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin-top: 8px;
+}
+
+.mvp-table th,
+.mvp-table td {
+  border-bottom: 1px solid var(--line-faint);
+  padding: 6px 4px;
+  text-align: left;
+}
+
+.mvp-table-you {
+  background: rgba(212, 165, 116, 0.12);
+}
+
+.mvp-podium-card .podium-visual {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 10px;
+  min-height: 120px;
+}
+
+.podium-slot {
+  flex: 1;
+  max-width: 120px;
+  border-radius: 8px;
+  padding: 10px 8px;
+  text-align: center;
+  border: 1px solid var(--line-faint);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.podium-slot--1 {
+  order: 2;
+  min-height: 110px;
+  background: rgba(212, 165, 116, 0.15);
+}
+
+.podium-slot--0 {
+  order: 1;
+  min-height: 85px;
+}
+
+.podium-slot--2 {
+  order: 3;
+  min-height: 70px;
+}
+
+.podium-rank {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.podium-name {
+  font-size: 13px;
+}
+
+.podium-pts {
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+
+.mvp-details-summary {
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.mvp-breakdown {
+  font-size: 11px;
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+.account-stats {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.account-stats li {
+  margin: 0.25rem 0;
+}

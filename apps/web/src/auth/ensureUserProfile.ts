@@ -24,6 +24,10 @@ export async function ensureUserProfile(user: User): Promise<void> {
       createdAt: serverTimestamp(),
       gamesPlayed: 0,
       gamesWon: 0,
+      totalPoints: 0,
+      mvpCount: 0,
+      podiumCount: 0,
+      bestGame: 0,
       favoriteRole: null,
       providers: providerIds.length ? providerIds : ["password"],
       isPremium: false,
@@ -51,6 +55,10 @@ export async function ensureUserProfile(user: User): Promise<void> {
 
   if (existing.favorites === undefined) updates.favorites = [];
   if (existing.isPremium === undefined) updates.isPremium = false;
+  if (existing.totalPoints === undefined) updates.totalPoints = 0;
+  if (existing.mvpCount === undefined) updates.mvpCount = 0;
+  if (existing.podiumCount === undefined) updates.podiumCount = 0;
+  if (existing.bestGame === undefined) updates.bestGame = 0;
   if (existing.premiumSince === undefined) updates.premiumSince = null;
   if (existing.stripeCustomerId === undefined) updates.stripeCustomerId = null;
 

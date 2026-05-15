@@ -11,6 +11,8 @@ import type { RoleId } from "folclore-game-engine";
 import { db, loadPlayers, loadSecrets, ROLE_SIDE, startNightSequence } from "../helpers.js";
 import { processBotNightActions } from "../lib/bots.js";
 import { maybeFinalizeNight } from "../lib/finalize.js";
+import { finalizeMvpLedgerIfNeeded } from "../lib/endGameScoring.js";
+import { grantAldeaoObjectiveIfMoradoresWon, grantObjectiveMvp } from "../lib/playerPrivateScore.js";
 import { findPlayer, requireAuth } from "./shared.js";
 
 export const brasContinueChoice = onCall(async (req) => {
@@ -50,6 +52,7 @@ export const brasContinueChoice = onCall(async (req) => {
       }),
       roomRef.collection("players").doc(me.id).update({ individualObjectiveMet: true }),
     ]);
+    await finalizeMvpLedgerIfNeeded(code).catch(console.error);
   } else {
     const validRoles = Object.keys(ROLE_SIDE) as RoleId[];
     const resolvedRole = (chosenRole && validRoles.includes(chosenRole as RoleId))
@@ -69,6 +72,7 @@ export const brasContinueChoice = onCall(async (req) => {
     });
     await roomRef.update({ pendingBrasChoice: false, votingOpen: false });
     const r = Number(roomSnap.data()!.round ?? 1) + 1;
+    await roomRef.collection("playerPrivate").doc(me.id).set({ bdObjective: 0 }, { merge: true });
     await startNightSequence(code, r);
     await processBotNightActions(code, r);
     await maybeFinalizeNight(code, r);
@@ -144,6 +148,9 @@ export const coronelAccusationVote = onCall(async (req) => {
     }
     b.update(roomRef, roomPatch);
     await b.commit();
+    if (coronelPlayer) {
+      await grantObjectiveMvp(code, coronelPlayer.id, round).catch(console.error);
+    }
   } else if (majority) {
     const coronelName = coronelPlayer?.name ?? "Coronel";
     const logRef = roomRef.collection("publicLogEntries").doc();
@@ -236,6 +243,10 @@ export const cangaceiroTiroCerto = onCall(async (req) => {
 
   await batch.commit();
 
+  if (creature && targetRole === "iara") {
+    await grantObjectiveMvp(code, me.id, round).catch(console.error);
+  }
+
   const [snaps2, sec2] = await Promise.all([loadPlayers(code), loadSecrets(code)]);
   const winPlayers: Record<string, WinPlayerSnapshot> = {};
   for (const p of snaps2) {
@@ -252,7 +263,7 @@ export const cangaceiroTiroCerto = onCall(async (req) => {
         p.alignment === "moradores" || p.alignment === "criaturas" ? p.alignment : null,
     };
   }
-  const winDetail = checkCollectiveWinDetailed(winPlayers, round, Number(room.maxRounds ?? 7));
+  const winDetail = checkCollectiveWinDetailed(winPlayers, round, Number(room.maxRounds ?? 7), Number(room.gameTablePlayerCount ?? 0) || snaps2.length);
   const w = winDetail.winner;
   if (w) {
     const revealedRoles: Record<string, string> = {};
@@ -261,8 +272,39 @@ export const cangaceiroTiroCerto = onCall(async (req) => {
       if (r) revealedRoles[p.id] = r;
     }
     const endMsg = collectiveWinChronicleMessagePt(winDetail);
+    const ts = Date.now();
+    const extraWins: Array<{ playerId: string; role: RoleId; type: string; round: number; timestamp: number }> = [];
+    if (Number(room.gameTablePlayerCount) === 5) {
+      for (const p of snaps2) {
+        const role = sec2[p.id]?.role;
+        if (role !== "curupira" && role !== "boitata") continue;
+        const alive = p.alive !== false && !p.eliminated && !p.expelled;
+        if (alive && p.individualObjectiveMet) {
+          extraWins.push({
+            playerId: p.id,
+            role,
+            type: role === "curupira" ? "curupira_cinco_objetivo" : "boitata_cinco_objetivo",
+            round,
+            timestamp: ts,
+          });
+        }
+      }
+    }
     const bEnd = db.batch();
-    bEnd.update(roomRef, { status: "ended", phase: "ended", winner: w, votingOpen: false, revealedRoles });
+    const endPatch: Record<string, unknown> = {
+      status: "ended",
+      phase: "ended",
+      winner: w,
+      votingOpen: false,
+      revealedRoles,
+      ...(winDetail.reason === "moradores_plaza_tie"
+        ? { collectiveEndKind: "moradores_plaza_tie" }
+        : { collectiveEndKind: FieldValue.delete() }),
+    };
+    if (extraWins.length > 0) {
+      endPatch.individualWins = FieldValue.arrayUnion(...extraWins);
+    }
+    bEnd.update(roomRef, endPatch);
     if (endMsg) {
       bEnd.set(roomRef.collection("publicLogEntries").doc(), {
         round,
@@ -273,6 +315,10 @@ export const cangaceiroTiroCerto = onCall(async (req) => {
       });
     }
     await bEnd.commit();
+    if (w === "moradores") {
+      await grantAldeaoObjectiveIfMoradoresWon(code, round, w, snaps2, sec2).catch(console.error);
+    }
+    await finalizeMvpLedgerIfNeeded(code).catch(console.error);
   }
 
   return { hit: creature, consulted, ended: Boolean(w) };

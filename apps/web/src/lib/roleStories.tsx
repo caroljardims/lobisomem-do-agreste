@@ -415,7 +415,7 @@ export const ROLE_LORE: Record<string, string | LoreRich> = {
         kind: "kv",
         title: "Poder noturno — Prisão",
         content:
-          "Toda noite, pode prender um suspeito com justificativa — o motivo é lido em voz alta pelo porta-voz no amanhecer. O preso fica sem votar no dia seguinte, mas não é expulso. O Delegado não descobre se o alvo é criatura ou morador.",
+          "Toda noite, pode prender um suspeito com justificativa (ou passar). O motivo da prisão é lido em voz alta pelo porta-voz no amanhecer. O preso fica sem votar no dia seguinte, mas não é expulso. Não pode prender a mesma pessoa em duas noites seguidas. O Delegado não descobre se o alvo é criatura ou morador.",
       },
       {
         kind: "kv",
@@ -624,9 +624,9 @@ export const ROLE_LORE: Record<string, string | LoreRich> = {
       },
       {
         kind: "kv",
-        title: "Objetivo",
+        title: "Objetivo (pódio)",
         content:
-          "Vencer com os moradores estando vivo quando a partida terminar e, em pelo menos uma rodada, ter votado (com voto válido) em alguém que seja expulso e revelado como criatura — não precisa ser seu voto sozinho que decide; basta ter apontado para o perigo certo nessa ocasião.",
+          "Vencer com os moradores e estar vivo quando o cordel fechar — o pódio valoriza quem segurou a linha da cidade até o fim, sem exigir que você tenha acertado a expulsão de uma criatura.",
       },
     ],
   },
@@ -639,12 +639,12 @@ mula:         "Você aterroriza alguém para silenciá-lo no chat durante o dia 
 boto:         "Você enfeitiça alguém para que não possa votar contra as criaturas.",
 iara:         "Você seduz alguém para roubar seu voto — ou usa a Voz Encantadora para eliminá-lo (uso único).",
 curupira:     "Você protege alguém de qualquer ação noturna de criatura esta noite.",
-doutor:       "Você salva alguém de ser eliminado. Não pode repetir o mesmo alvo da noite anterior.",
-mae_de_santo: "Você invoca um jogador já eliminado para retornar por mais um dia.",
-geni:         "Você conversa com alguém e o sistema revela: morador ou criatura — ou usa o Charme de Verdade para protegê-lo de qualquer criatura esta noite (uso único).",
-boitata:      "Você investiga alguém para descobrir seu lado.",
-cartomante:   "Você lê o destino de alguém para revelar se é morador ou criatura.",
-delegado:     "Você prende alguém — ele perde o voto no próximo dia. A prisão deve ser justificada e o motivo será lido publicamente.",
+doutor:       "Você pode salvar alguém de ser eliminado (não pode repetir o mesmo alvo da noite anterior) — ou passar.",
+mae_de_santo: "Você pode invocar um jogador já eliminado (não expulso) — ou passar se não houver quem invocar.",
+geni:         "Você conversa com alguém (morador ou criatura), usa o Charme de Verdade (uso único) ou passa a noite sem usar nenhum dos dois.",
+boitata:      "Na 1ª noite escolha alinhamento e investigue alguém; depois pode investigar ou passar (não repete alvo de noites anteriores).",
+cartomante:   "Você investiga alguém para revelar o lado — ou passa (a partir da 2ª noite), sem repetir alvo de noites anteriores.",
+delegado:     "Você pode prender alguém — ele perde o voto no próximo dia (motivo lido em voz alta) — ou passar. Não pode prender a mesma pessoa em duas noites seguidas.",
 cangaceiro:   "Você consulta se a Geni já investigou seu alvo, preparando o Tiro Certo para o dia.",
 padre:        "Você catequiza alguém — ele fica imune à sedução da Iara e ao terror da Mula nessa noite.",
 };

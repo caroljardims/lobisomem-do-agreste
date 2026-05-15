@@ -25,25 +25,32 @@ export function describeNightAction(
     case "curupira":
       return `${actorName} protegeu ${targetName}`;
     case "doutor":
+      if (action === "pass") return `${actorName} não usou o kit de primeiros socorros nesta noite`;
       return `${actorName} tentou salvar ${targetName}`;
     case "mae_de_santo":
+      if (action === "pass") return `${actorName} não invocou ninguém nesta noite`;
       return `${actorName} invocou ${targetName}`;
     case "geni":
+      if (action === "pass") return `${actorName} não conversou nem usou o Charme nesta noite`;
       return action === "charm"
         ? `${actorName} usou o Charme de Verdade em ${targetName}`
         : `${actorName} conversou com ${targetName}`;
     case "padre":
       return `${actorName} catequizou ${targetName}`;
     case "boitata":
+      if (action === "pass") return `${actorName} não investigou ninguém nesta noite`;
       return `${actorName} investigou ${targetName}`;
     case "cartomante":
+      if (action === "pass") return `${actorName} não investigou ninguém nesta noite`;
       return `${actorName} investigou ${targetName}`;
-    case "delegado": {
-      const reason = specialAction?.trim();
-      return reason
-        ? `${actorName} prendeu ${targetName} — "${reason}"`
-        : `${actorName} prendeu ${targetName}`;
-    }
+    case "delegado":
+      if (action === "pass") return `${actorName} não prendeu ninguém nesta noite`;
+      {
+        const reason = specialAction?.trim();
+        return reason
+          ? `${actorName} prendeu ${targetName} — "${reason}"`
+          : `${actorName} prendeu ${targetName}`;
+      }
     case "cangaceiro":
       return action === "pass"
         ? `${actorName} não consultou Geni nesta noite`

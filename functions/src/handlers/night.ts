@@ -5,6 +5,7 @@ import type { NightActionInput, RoleId } from "folclore-game-engine";
 import { db, loadPlayers, loadSecrets, startNightSequence } from "../helpers.js";
 import { maybeFinalizeNight } from "../lib/finalize.js";
 import { processBotNightActions } from "../lib/bots.js";
+import { setNightSuspicion } from "../lib/playerPrivateScore.js";
 import { findPlayer, requireAuth } from "./shared.js";
 
 export const submitNightAction = onCall(async (req) => {
@@ -46,11 +47,23 @@ export const submitNightAction = onCall(async (req) => {
     }
   }
 
+  const privSnap = await roomRef.collection("playerPrivate").doc(me.id).get();
+  const usedTargets = (privSnap.data()?.investigationTargetsUsed as string[]) ?? [];
+  const geniPrev = (room.geniInvestigatedTargets as string[]) ?? [];
+  const priorInvestigationTargetIds =
+    mySecret.role === "geni" && action === "converse"
+      ? geniPrev
+      : mySecret.role === "cartomante" || mySecret.role === "boitata"
+        ? usedTargets
+        : [];
+
   const v = validateNightAction(
     {
       round: Number(room.round ?? 1),
       expectedRole: mySecret.role,
-      blockedNextNight: Boolean(me.blockedNextNight),
+      tablePlayerCount:
+        room.gameTablePlayerCount != null ? Number(room.gameTablePlayerCount) : undefined,
+      priorInvestigationTargetIds,
     },
     {
       id: me.id,
@@ -69,6 +82,7 @@ export const submitNightAction = onCall(async (req) => {
       protected: Boolean(me.protected),
       invoked: Boolean(me.invoked),
       doctorLastTargetId: (me.doctorLastTargetId as string | null) ?? null,
+      delegadoLastJailedId: (me.delegadoLastJailedId as string | null | undefined) ?? null,
       wolfBiteUsed: Boolean(me.wolfBiteUsed),
       mulaExorcizeUsed: Boolean(me.mulaExorcizeUsed),
       geniCharmUsed: Boolean(me.geniCharmUsed),
@@ -82,6 +96,8 @@ export const submitNightAction = onCall(async (req) => {
   );
   if (!v.ok) throw new HttpsError("invalid-argument", v.error);
 
+  const blockedThisNight = Boolean(me.blockedNextNight);
+
   const round = Number(room.round ?? 1);
   const nightRef = roomRef.collection("nightActions").doc(String(round));
   await nightRef.set(
@@ -93,6 +109,8 @@ export const submitNightAction = onCall(async (req) => {
   );
 
   if (
+    !blockedThisNight &&
+    Number(room.gameTablePlayerCount) !== 5 &&
     (mySecret.role === "curupira" || mySecret.role === "boitata") &&
     round === 1 &&
     (specialAction === "moradores" || specialAction === "criaturas")
@@ -110,26 +128,26 @@ export const submitNightAction = onCall(async (req) => {
     await chronicleBatch.commit();
   }
 
-  if (mySecret.role === "geni" && targetId && action === "converse") {
+  if (mySecret.role === "geni" && targetId && action === "converse" && !blockedThisNight) {
     const prev = (room.geniInvestigatedTargets as string[]) ?? [];
     if (!prev.includes(targetId)) {
       await roomRef.update({ geniInvestigatedTargets: [...prev, targetId] });
     }
   }
 
-  if (mySecret.role === "geni" && action === "charm") {
+  if (mySecret.role === "geni" && action === "charm" && !blockedThisNight) {
     await roomRef.collection("players").doc(me.id).update({ geniCharmUsed: true });
   }
 
-  if (mySecret.role === "mula" && action === "exorcize") {
+  if (mySecret.role === "mula" && action === "exorcize" && !blockedThisNight) {
     await roomRef.collection("players").doc(me.id).update({ mulaExorcizeUsed: true });
   }
 
-  if (mySecret.role === "lobisomem" && action === "bite") {
+  if (mySecret.role === "lobisomem" && action === "bite" && !blockedThisNight) {
     await roomRef.collection("players").doc(me.id).update({ wolfBiteUsed: true });
   }
 
-  if (mySecret.role === "iara" && action === "eliminate_special") {
+  if (mySecret.role === "iara" && action === "eliminate_special" && !blockedThisNight) {
     await roomRef.collection("players").doc(me.id).update({ iaraSeductionBlockedThroughRound: round + 2 });
   }
 
@@ -173,6 +191,34 @@ export const markNightReady = onCall(async (req) => {
   await processBotNightActions(code, round);
   const dawn = await maybeFinalizeNight(code, round);
   return { ok: true, dawn };
+});
+
+export const submitNightSuspicion = onCall(async (req) => {
+  const uid = requireAuth(req);
+  const code = String(req.data?.roomCode ?? "").toUpperCase().trim();
+  const pass = Boolean(req.data?.pass);
+  const raw = req.data?.targetId as string | null | undefined;
+  const targetId = pass || raw === "" || raw == null ? null : String(raw).trim();
+  if (!code) throw new HttpsError("invalid-argument", "Código inválido.");
+
+  const roomRef = db.collection("rooms").doc(code);
+  const roomSnap = await roomRef.get();
+  if (!roomSnap.exists) throw new HttpsError("not-found", "Sala não encontrada.");
+  if (roomSnap.data()!.status !== "night") throw new HttpsError("failed-precondition", "Só de noite.");
+
+  const players = await loadPlayers(code);
+  const me = findPlayer(players, req);
+  if (!me || me.alive === false || me.eliminated || me.expelled) {
+    throw new HttpsError("failed-precondition", "Você não pode enviar suspeita agora.");
+  }
+  const aliveOthers = players.filter(
+    (p) => p.id !== me.id && p.alive !== false && !p.eliminated && !p.expelled,
+  );
+  if (targetId && !aliveOthers.some((p) => p.id === targetId)) {
+    throw new HttpsError("invalid-argument", "Alvo inválido.");
+  }
+  await setNightSuspicion(code, me.id, uid, targetId);
+  return { ok: true };
 });
 
 export const startNight = onCall(async (req) => {

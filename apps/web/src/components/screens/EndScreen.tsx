@@ -3,6 +3,7 @@ import { BtnSpinner } from "../BtnSpinner.js";
 import { describeNightAction } from "../../lib/describeNightAction.js";
 import { individualWinChronicleLine } from "../../lib/individualWinLabels.js";
 import { ROLE_DISPLAY, ROLE_LORE, RoleLoreContent } from "../../lib/roleStories.js";
+import { useGameSummary } from "../../hooks/useGameSummary.js";
 import type { PlayerDoc, PublicLogEntry, RoomDoc } from "../../types.js";
 
 type NightActionRow = Record<
@@ -43,13 +44,23 @@ export function EndScreen({
   run,
   roomCode,
 }: EndScreenProps) {
+  const gameId = typeof room.lastGameHistoryId === "string" ? room.lastGameHistoryId : undefined;
+  const { summary, loaded: summaryLoaded } = useGameSummary(gameId);
+
+  const moradoresPlazaTie =
+    room.winner === "moradores" && room.collectiveEndKind === "moradores_plaza_tie";
+  const MORADORES_PLAZA_TIE_COPY =
+    "A cidade segurou o fôlego. O folclore e os moradores ficaram frente a frente na praça da Bucaré — iguais em número, iguais em determinação. No empate, a cidade resiste. Os moradores venceram.";
+
   const winnerLabel =
-    room.winner === "moradores"
+    moradoresPlazaTie
+      ? "Os moradores venceram"
+      : room.winner === "moradores"
       ? "Os moradores controlaram as criaturas"
       : room.winner === "criaturas"
         ? "As criaturas dominaram a cidade dos humanos"
         : room.winner === "bots"
-          ? "Apocalipse Robô"
+          ? "🤖 Apocalipse Robô 🤖"
           : (() => {
               const wp = players.find((p) => p.id === room.winner);
               return wp ? `${wp.name} venceu` : "Fim de jogo";
@@ -113,13 +124,18 @@ export function EndScreen({
       <div className="game-card ended-card">
         <p className="ended-label">Fim de jogo</p>
         <p className="ended-winner">{winnerLabel}</p>
+        {moradoresPlazaTie && (
+          <p className="muted" style={{ marginTop: 10, whiteSpace: "pre-line", lineHeight: 1.45 }}>
+            {MORADORES_PLAZA_TIE_COPY}
+          </p>
+        )}
         {isHost && (
           <button
             type="button"
             className="primary-btn"
             disabled={anyPending}
             style={{ marginTop: "1rem" }}
-            onClick={() => run("restartGame", { roomCode }, "restartGame")}
+            onClick={() => void run("restartGame", { roomCode }, "restartGame").catch(() => {})}
           >
             <div className="btn-stack">
               <span className="btn-title btn-title-row">
@@ -160,19 +176,6 @@ export function EndScreen({
       </div>
 
       <div className="game-card log-card chronicle-card">
-        <strong className="chronicle-title">Objetivos individuais</strong>
-        {individualWins.length === 0 ? (
-          <p className="muted chronicle-line">Nenhum objetivo individual foi registrado nesta partida.</p>
-        ) : (
-          individualWins.map((w, idx) => (
-            <p key={`${w.playerId}-${w.type}-${w.round}-${idx}`} className="chronicle-line chronicle-individual-win">
-              {individualWinChronicleLine(w, playerNameById[w.playerId] ?? w.playerId)}
-            </p>
-          ))
-        )}
-      </div>
-
-      <div className="game-card log-card chronicle-card">
         <strong className="chronicle-title">Crônica da partida</strong>
         {!historyLoaded ? (
           <p className="muted">Carregando histórico…</p>
@@ -194,7 +197,12 @@ export function EndScreen({
             const actionLines = Object.entries(nightActions).flatMap(([pid, act]) => {
               if (
                 !act?.targetId &&
-                !(act.role === "cangaceiro" && act.action === "pass")
+                !(act.role === "cangaceiro" && act.action === "pass") &&
+                !(act.role === "delegado" && act.action === "pass") &&
+                !(
+                  ["cartomante", "boitata", "geni", "doutor", "mae_de_santo"].includes(String(act.role)) &&
+                  act.action === "pass"
+                )
               ) {
                 return [];
               }
@@ -217,7 +225,13 @@ export function EndScreen({
               <div key={r} className="chronicle-round">
                 <p className="chronicle-phase">Noite {r}</p>
                 {r === 1 &&
-                  neutralAlignExplain.map((p) => {
+                  neutralAlignExplain
+                    .filter((p) => {
+                      if (Number(room.gameTablePlayerCount ?? 0) !== 5) return true;
+                      const role = revealed[p.id ?? ""];
+                      return role !== "curupira" && role !== "boitata";
+                    })
+                    .map((p) => {
                     const role = revealed[p.id ?? ""];
                     const al =
                       p.alignment === "moradores" || p.alignment === "criaturas" ? p.alignment : null;
@@ -267,16 +281,93 @@ export function EndScreen({
                         {e.message}
                       </p>
                     ))}
-                    {roundChronicleEnd.map((e) => (
-                      <p key={e.id} className="chronicle-outcome chronicle-end-rule">
-                        {e.message}
-                      </p>
-                    ))}
                   </>
                 )}
+                {roundChronicleEnd.map((e) => (
+                  <p key={e.id} className="chronicle-outcome chronicle-end-rule">
+                    {e.message}
+                  </p>
+                ))}
               </div>
             );
           })
+        )}
+      </div>
+
+      <div className="game-card log-card chronicle-card">
+        <strong className="chronicle-title">Objetivos individuais</strong>
+        {individualWins.length === 0 ? (
+          <p className="muted chronicle-line">Nenhum objetivo individual foi registrado nesta partida.</p>
+        ) : (
+          individualWins.map((w, idx) => (
+            <p key={`${w.playerId}-${w.type}-${w.round}-${idx}`} className="chronicle-line chronicle-individual-win">
+              {individualWinChronicleLine(w, playerNameById[w.playerId] ?? w.playerId)}
+            </p>
+          ))
+        )}
+      </div>
+
+      <div className="game-card log-card chronicle-card mvp-podium-card">
+        <strong className="chronicle-title">Pódio da noite</strong>
+        {!summaryLoaded ? (
+          <p className="muted chronicle-line">Carregando pontuação…</p>
+        ) : !summary?.players?.length ? (
+          <p className="muted chronicle-line">Resumo de pontos ainda não disponível.</p>
+        ) : (
+          <>
+            <div className="podium-visual">
+              {[1, 0, 2].map((slot) => {
+                const ordered = [...summary.players!].sort((a, b) => a.rank - b.rank);
+                const row = ordered[slot];
+                if (!row) return <div key={slot} className="podium-slot podium-slot--empty" />;
+                const h = slot === 0 ? "1º" : slot === 1 ? "2º" : "3º";
+                return (
+                  <div key={row.playerId} className={`podium-slot podium-slot--${slot}`}>
+                    <span className="podium-rank">{h}</span>
+                    <span className="podium-name">{row.displayName}</span>
+                    <span className="podium-role muted">{ROLE_DISPLAY[row.role] ?? row.role}</span>
+                    <span className="podium-pts">{row.points} pts</span>
+                  </div>
+                );
+              })}
+            </div>
+            <table className="mvp-table" style={{ marginTop: "1rem" }}>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Jogador</th>
+                  <th>Papel</th>
+                  <th>Pts</th>
+                  <th>Detalhe</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...summary.players].sort((a, b) => a.rank - b.rank).map((row) => (
+                  <tr key={row.playerId}>
+                    <td>{row.rank}</td>
+                    <td>{row.displayName}</td>
+                    <td>{ROLE_DISPLAY[row.role] ?? row.role}</td>
+                    <td>{row.points}</td>
+                    <td>
+                      <details>
+                        <summary className="mvp-details-summary">ver</summary>
+                        <div className="mvp-breakdown muted">
+                          Suspeitas corretas: {row.breakdown.suspicion} pts · Votos no inimigo:{" "}
+                          {row.breakdown.voteEnemy} pts · Bônus expulsão: {row.breakdown.voteExpelledBonus} pts ·
+                          Investigação: {row.breakdown.investigation} pts · Objetivo cumprido:{" "}
+                          {row.breakdown.objective} pts · Sobrevivência: {row.breakdown.survival} pts · Brás (rodada):{" "}
+                          {row.breakdown.brasRoundTease} pts
+                        </div>
+                      </details>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="muted chronicle-line" style={{ marginTop: "0.75rem" }}>
+              Estes pontos foram adicionados ao seu perfil (ranking global).
+            </p>
+          </>
         )}
       </div>
     </div>

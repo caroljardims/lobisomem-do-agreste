@@ -17,6 +17,8 @@ export type RoomDoc = DocumentData & {
   hostUid?: string;
   expectedPlayerCount?: number;
   round?: number;
+  /** Teto de rodadas antes da vitória automática do folclore (lua cheia). */
+  maxRounds?: number;
   spokespersonId?: string;
   currentActorRole?: string | null;
   nightPendingRoles?: string[];
@@ -38,6 +40,15 @@ export type RoomDoc = DocumentData & {
     round: number;
     timestamp: number;
   }>;
+  lastGameHistoryId?: string;
+  mvpLedgerApplied?: boolean;
+  geniInvestigatedTargets?: string[];
+  /** Congelado em `startGame` (jogadores conectados ao iniciar). */
+  gameTablePlayerCount?: number;
+  /** Fim por empate 7+ no placar (criaturas === moradores); texto distinto na crônica e na tela final. */
+  collectiveEndKind?: string;
+  /** Só mesa de 5: ids de jogadores com papel de lado morador no início (objetivo Curupira/Boitatá). */
+  fiveTableMoradorIds?: string[];
 };
 
 export type PlayerDoc = DocumentData & {
@@ -61,6 +72,11 @@ export type PlayerDoc = DocumentData & {
   invoked?: boolean;
   individualObjectiveMet?: boolean;
   alignment?: string;
+  /** Mesa de 5: moradores distintos já protegidos (Curupira). */
+  curupiraFiveMoradoresProtected?: string[];
+  /** Mesa de 5: moradores distintos já investigados (Boitatá). */
+  boitataFiveMoradoresInvestigated?: string[];
+  delegadoLastJailedId?: string | null;
 };
 
 export type PublicLogEntry = { id: string; message?: string; round?: number; type?: string };
