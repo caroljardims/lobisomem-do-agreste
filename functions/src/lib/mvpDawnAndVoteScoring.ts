@@ -11,13 +11,17 @@ function alignOf(p: PlayerRow): ScoringAlignment {
   return null;
 }
 
-/** Suspeita + investigação (amanhecer da rodada `round`). */
+/** Suspeita + investigação (amanhecer da rodada `round`).
+ * `blockedActorIds`: jogadores cujo `blockedNextNight` estava ativo ao iniciar a noite
+ * (habilidade roubada pelo Saci/Cangaceiro — ação registrada mas não executada).
+ */
 export async function scoreMvpAtDawn(
   roomCode: string,
   round: number,
   players: PlayerRow[],
   secrets: Record<string, { role: RoleId }>,
   nightActions: Record<string, NightActionInput | undefined>,
+  blockedActorIds: Set<string> = new Set(),
 ): Promise<void> {
   const roomRef = db.collection("rooms").doc(roomCode);
   const privSnap = await roomRef.collection("playerPrivate").get();
@@ -45,6 +49,7 @@ export async function scoreMvpAtDawn(
   const investigateRoles = new Set<RoleId>(["cartomante", "boitata", "delegado"]);
   for (const [actorId, act] of Object.entries(nightActions)) {
     if (!act?.targetId) continue;
+    if (blockedActorIds.has(actorId)) continue;
     const asec = secrets[actorId];
     const tsec = secrets[act.targetId];
     if (!asec || !tsec) continue;

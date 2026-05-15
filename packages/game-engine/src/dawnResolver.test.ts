@@ -109,6 +109,45 @@ describe("resolveDawn", () => {
     expect(res.individualWins.some((w) => w.role === "mula")).toBe(false);
   });
 
+  it("Curupira proteção bloqueia catequização do Padre sobre o alvo", () => {
+    const curupira = basePlayer("c", "Curupira", "curupira");
+    const padre = basePlayer("p", "Padre", "padre");
+    const alvo = basePlayer("a", "Alvo", "aldeao");
+    const mula = basePlayer("m", "Mula", "mula");
+    const players = { c: curupira, p: padre, a: alvo, m: mula };
+    const res = resolveDawn({
+      round: 2,
+      now: 1,
+      players,
+      nightActions: {
+        c: { role: "curupira", action: "protect", targetId: "a", specialAction: null },
+        p: { role: "padre", action: "catechize", targetId: "a", specialAction: null },
+        m: { role: "mula", action: "terrorize", targetId: "a", specialAction: null },
+      },
+      geniInvestigatedIds: {},
+    });
+    // catechize blocked by Curupira → Mula terrorize should also land (catechized = false)
+    expect(res.players.a.catechized).toBe(false);
+    expect(res.players.a.silenced).toBe(false); // Mula blocked by Curupira protection too
+  });
+
+  it("Lobisomem mordida anuncia mesmo sem Doutor (nenhum código morto)", () => {
+    const wolf = basePlayer("w", "Wolf", "lobisomem");
+    const alvo = basePlayer("a", "Alvo", "aldeao");
+    const players = { w: wolf, a: alvo };
+    const res = resolveDawn({
+      round: 1,
+      now: 1,
+      players,
+      nightActions: {
+        w: { role: "lobisomem", action: "bite", targetId: "a", specialAction: null },
+      },
+      geniInvestigatedIds: {},
+    });
+    expect(res.publicLog.some((e) => e.type === "bite")).toBe(true);
+    expect(res.privateLog.a?.[0]?.message).toContain("mordido");
+  });
+
   it("Geni Charme de Verdade protege alvo do Lobisomem", () => {
     const geni = basePlayer("g", "Geni", "geni");
     const wolf = basePlayer("w", "Wolf", "lobisomem");

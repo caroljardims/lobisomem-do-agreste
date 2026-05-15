@@ -114,12 +114,14 @@ export function resolveDawn(input: DawnResolveInput): DawnResolveResult {
   }
 
   // --- 2. Padre — catechize (protection from Mula/Iara this night) ---
+  // Curupira protection also blocks the Padre (CLAUDE.md: "impede ações do Padre sobre o alvo").
   const padreAction = getAction(input.nightActions, "padre", input.players);
   const catechizedThisNight = new Set<string>();
   if (
     padreAction?.action.targetId &&
     players[padreAction.action.targetId] &&
-    !stolen(padreAction.playerId)
+    !stolen(padreAction.playerId) &&
+    !protectedTargets.has(padreAction.action.targetId)
   ) {
     const catTarget = players[padreAction.action.targetId];
     catTarget.catechized = true;
@@ -253,11 +255,8 @@ export function resolveDawn(input: DawnResolveInput): DawnResolveResult {
           timestamp: input.now,
         });
       } else if (wolf.action.action === "bite") {
-        const savedByDoctor = doc?.action.targetId === tid;
-        if (!savedByDoctor) {
-          biteAnnounced = true;
-          pushPrivate(tid, "Você foi mordido. Há consequências secretas nesta partida.");
-        }
+        biteAnnounced = true;
+        pushPrivate(tid, "Você foi mordido. Há consequências secretas nesta partida.");
       }
     }
   }

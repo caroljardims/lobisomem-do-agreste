@@ -148,22 +148,32 @@ describe("validateNightAction", () => {
     expect(v.ok).toBe(false);
   });
 
-  it("Cartomante não pode passar na 1ª noite", () => {
+  it("Cartomante pode passar na 1ª noite", () => {
     const p = player({ role: "cartomante", side: "morador" });
     const v = validateNightAction(
       { round: 1, expectedRole: "cartomante" },
       p,
       { role: "cartomante", action: "pass", targetId: null, specialAction: null },
     );
+    expect(v.ok).toBe(true);
+  });
+
+  it("Boitatá não pode passar na 1ª noite (precisa declarar alinhamento)", () => {
+    const p = player({ role: "boitata", side: "neutro" });
+    const v = validateNightAction(
+      { round: 1, expectedRole: "boitata" },
+      p,
+      { role: "boitata", action: "pass", targetId: null, specialAction: null },
+    );
     expect(v.ok).toBe(false);
   });
 
-  it("Cartomante pode passar a partir da 2ª noite", () => {
-    const p = player({ role: "cartomante", side: "morador" });
+  it("Boitatá pode passar a partir da 2ª noite", () => {
+    const p = player({ role: "boitata", side: "neutro" });
     const v = validateNightAction(
-      { round: 2, expectedRole: "cartomante" },
+      { round: 2, expectedRole: "boitata" },
       p,
-      { role: "cartomante", action: "pass", targetId: null, specialAction: null },
+      { role: "boitata", action: "pass", targetId: null, specialAction: null },
     );
     expect(v.ok).toBe(true);
   });

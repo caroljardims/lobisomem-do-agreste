@@ -327,10 +327,8 @@ export async function finalizeNight(roomCode: string, round: number) {
   const botoId = players.find((p) => secrets[p.id]?.role === "boto")?.id;
   let botoEnchantedMoradores: string[] = (room.botoEnchantedMoradores as string[] | undefined) ?? [];
   if (botoId) {
-    const botoActor = players.find((p) => p.id === botoId);
-    const botoBlocked = Boolean(botoActor?.blockedNextNight);
     const botoAction = Object.entries(nightActions).find(([pid]) => secrets[pid]?.role === "boto")?.[1];
-    if (botoAction?.targetId && !botoBlocked) {
+    if (botoAction?.targetId && res.players[botoAction.targetId]?.enchanted) {
       const targetSec = secrets[botoAction.targetId];
       if (targetSec?.side === "morador" && !botoEnchantedMoradores.includes(botoAction.targetId)) {
         botoEnchantedMoradores = [...botoEnchantedMoradores, botoAction.targetId];
@@ -341,10 +339,8 @@ export async function finalizeNight(roomCode: string, round: number) {
   const padreId = players.find((p) => secrets[p.id]?.role === "padre")?.id;
   let padreCatechizedMoradores: string[] = (room.padreCatechizedMoradores as string[] | undefined) ?? [];
   if (padreId) {
-    const padreActor = players.find((p) => p.id === padreId);
-    const padreBlocked = Boolean(padreActor?.blockedNextNight);
     const padreAction = Object.entries(nightActions).find(([pid]) => secrets[pid]?.role === "padre")?.[1];
-    if (padreAction?.targetId && !padreBlocked) {
+    if (padreAction?.targetId && res.players[padreAction.targetId]?.catechized) {
       const targetSec = secrets[padreAction.targetId];
       if (targetSec?.side === "morador" && !padreCatechizedMoradores.includes(padreAction.targetId)) {
         padreCatechizedMoradores = [...padreCatechizedMoradores, padreAction.targetId];
@@ -382,7 +378,8 @@ export async function finalizeNight(roomCode: string, round: number) {
 
   await batch.commit();
 
-  await scoreMvpAtDawn(roomCode, round, players, secrets, nightActions).catch(console.error);
+  const blockedActorIds = new Set(players.filter((p) => Boolean(p.blockedNextNight)).map((p) => p.id));
+  await scoreMvpAtDawn(roomCode, round, players, secrets, nightActions, blockedActorIds).catch(console.error);
 
   const postObjectiveUpdates: Promise<unknown>[] = [];
 

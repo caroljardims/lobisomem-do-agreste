@@ -341,7 +341,7 @@ Se um personagem não está na partida ou está morto/expulso, o sistema pula au
 - Sistema marca `jailed: true` no alvo — sem voto no próximo dia
 - Motivo é publicado no log público do amanhecer (porta-voz lê em voz alta)
 - Delegado não descobre se o alvo é morador ou criatura
-- Pode prender toda noite (sem limite de usos)
+- Pode prender toda noite (sem limite de usos), mas não pode prender o mesmo alvo em noites consecutivas
 
 **Padre**
 
@@ -487,7 +487,9 @@ Para **“Todas as criaturas cumpriram objetivos individuais”**, contam apenas
 | Condição                                                          | Vencedor                                         |
 | ----------------------------------------------------------------- | ------------------------------------------------ |
 | Todas as criaturas expulsas ou eliminadas                         | Moradores                                        |
-| Criaturas vivas ≥ moradores vivos                                 | Criaturas                                        |
+| Criaturas vivas > moradores vivos (qualquer mesa)                 | Criaturas                                        |
+| Empate criaturas == moradores — mesa 5–6                          | Jogo continua                                    |
+| Empate criaturas == moradores — mesa 7+                           | Moradores (praça decide)                         |
 | Todas as criaturas cumpriram objetivos individuais                | Criaturas                                        |
 | Rodada atual > maxRounds (lua cheia)                              | Criaturas                                        |
 | Brás Cubas expulso por votação (e opta por encerrar)              | Brás Cubas                                       |
@@ -512,7 +514,8 @@ Para **“Todas as criaturas cumpriram objetivos individuais”**, contam apenas
 | Situação                          | Texto                                                                                  |
 | --------------------------------- | -------------------------------------------------------------------------------------- |
 | Moradores vencem                  | *"A cidade respirou. O folclore recuou para as sombras. Os moradores venceram."*       |
-| Criaturas em maioria              | *"Não há mais como resistir. O folclore tomou a cidade. As criaturas venceram."*       |
+| Criaturas em maioria (> moradores) | *"Não há mais como resistir. O folclore tomou a cidade. As criaturas venceram."*      |
+| Empate (mesa 7+, praça decide)    | *"A cidade estava dividida. Na dúvida, a praça falou mais alto — e os moradores resistiram."* |
 | Todas criaturas cumprem objetivos | *"O folclore não precisava de força — precisava de paciência. As criaturas venceram."* |
 | Lua cheia                         | *"A lua cheia chegou. O folclore está completo. A cidade pertence às criaturas."*      |
 | Brás Cubas expulso                | *"Espera. [Nome] sorri. Era o Tolo — e ser expulso era exatamente o que queria."*      |
@@ -532,10 +535,10 @@ Para **“Todas as criaturas cumpriram objetivos individuais”**, contam apenas
 
 | Jogadores | Rodadas máximas (`maxRounds`) |
 | --------- | ------------------------------- |
-| 5         | 7               |
-| 7         | 5               |
-| 9–11      | 6               |
-| 12+       | 7               |
+| 5–6       | 7                               |
+| 7–8       | 5                               |
+| 9–11      | 6                               |
+| 12+       | 7                               |
 
 
 Vitória por lua cheia: após um amanhecer, se `round > maxRounds` na verificação coletiva, as criaturas vencem na hora (não depende de haver exatamente zero moradores).
@@ -612,6 +615,22 @@ Vitória por lua cheia: após um amanhecer, se `round > maxRounds` na verificaç
 # To Do
 
 ## Pendente
+
+### Questões de design para validar
+
+**1. Saci Gorro na expulsão: ativação manual vs. automática**
+
+Arquivo: functions/src/handlers/dayActions.ts — markSaciGorroOffer 
+
+O Saci precisa chamar markSaciGorroOffer proativamente durante o dia para ativar o Gorro antes de ser expulso. CLAUDE.md diz "sistema oferece opção de ativar" — sugerindo que o sistema oferece automaticamente quando o Saci é expulso. Além disso: se o Saci ativar pendingSaciGorro: true mas não for expulso naquele dia, o flag persiste? Precisa confirmar quando ele é limpo.
+
+**2. Geni + Cangaceiro na mesma noite: Cangaceiro vê alvo investigado nesta noite**
+
+Arquivo: functions/src/handlers/night.ts — submitNightAction para Geni
+
+room.geniInvestigatedTargets é atualizado em submitNightAction durante a noite. Quando finalizeNight roda, esse histórico já inclui o alvo investigado nesta mesma noite. Então se Geni conversa com X na rodada 3 e o Cangaceiro consulta X na mesma rodada 3, o dawn resolver vê X como "já investigado" e revela a identidade ao Cangaceiro.
+
+A pergunta é: "já investigou" deve incluir a noite atual ou só noites anteriores?
 
 ## Concluído
 

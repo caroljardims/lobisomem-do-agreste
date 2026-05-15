@@ -77,7 +77,8 @@ export function validateNightAction(
       player.role === "geni" ||
       player.role === "doutor" ||
       player.role === "mae_de_santo" ||
-      ((player.role === "cartomante" || player.role === "boitata") && ctx.round > 1);
+      player.role === "cartomante" ||
+      (player.role === "boitata" && ctx.round > 1);
     if (!allowPass) {
       return { ok: false, error: "Este personagem não pode passar a noite desta forma." };
     }
