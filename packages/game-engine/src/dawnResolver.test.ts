@@ -29,6 +29,7 @@ function basePlayer(
     mulaExorcizeUsed: false,
     geniCharmUsed: false,
     catechized: false,
+    iaraSeductionBlockedThroughRound: null,
   };
 }
 

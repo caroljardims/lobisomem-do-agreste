@@ -73,6 +73,10 @@ export const submitNightAction = onCall(async (req) => {
       mulaExorcizeUsed: Boolean(me.mulaExorcizeUsed),
       geniCharmUsed: Boolean(me.geniCharmUsed),
       catechized: Boolean(me.catechized),
+      iaraSeductionBlockedThroughRound:
+        me.iaraSeductionBlockedThroughRound == null
+          ? null
+          : Number(me.iaraSeductionBlockedThroughRound),
     },
     submission,
   );
@@ -93,7 +97,7 @@ export const submitNightAction = onCall(async (req) => {
     round === 1 &&
     (specialAction === "moradores" || specialAction === "criaturas")
   ) {
-    const crono = `A crônica registra: ${String(me.name ?? "")} (${displayRoleName(mySecret.role)}) — neutro — alinhamento escolhido: ${specialAction}.`;
+    const crono = `Alinhamento (1ª noite): ${String(me.name ?? "")} (${displayRoleName(mySecret.role)}, neutro) escolheu ficar com os ${specialAction === "moradores" ? "moradores" : "criaturas"}. Na vitória coletiva, passa a contar nesse lado ao comparar quantos vivos restam de cada time (criaturas + neutros do folclore vs. moradores + neutros da comunidade).`;
     const chronicleBatch = db.batch();
     chronicleBatch.update(roomRef.collection("players").doc(me.id), { alignment: specialAction });
     chronicleBatch.set(roomRef.collection("publicLogEntries").doc(), {
@@ -121,8 +125,12 @@ export const submitNightAction = onCall(async (req) => {
     await roomRef.collection("players").doc(me.id).update({ mulaExorcizeUsed: true });
   }
 
-  if (mySecret.role === "saci") {
-    await roomRef.update({ saciActedThisNight: true });
+  if (mySecret.role === "lobisomem" && action === "bite") {
+    await roomRef.collection("players").doc(me.id).update({ wolfBiteUsed: true });
+  }
+
+  if (mySecret.role === "iara" && action === "eliminate_special") {
+    await roomRef.collection("players").doc(me.id).update({ iaraSeductionBlockedThroughRound: round + 2 });
   }
 
   const newPending = pendingRoles.filter((r) => r !== mySecret.role);

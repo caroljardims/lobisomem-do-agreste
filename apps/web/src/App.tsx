@@ -1,12 +1,12 @@
-import { signInAnonymously } from "firebase/auth";
 import {
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
-  type ReactNode,
 } from "react";
+import { AuthModal } from "./components/AuthModal.js";
+import { useAuth } from "./context/AuthContext.js";
 import { auth, call } from "./firebase.js";
 import {
   canShowCangaceiroTiro,
@@ -45,7 +45,8 @@ const LS_GLYPH = "folclore_glyph";
 const AVATAR_GLYPHS = ["☽", "✦", "◆", "❖", "✧", "☆", "★", "◉"];
 
 export function App() {
-  const [uid, setUid] = useState<string | null>(null);
+  const { user, authReady, signOutUser } = useAuth();
+  const uid = user?.uid ?? null;
   const [err, setErr] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const anyPending = pendingAction !== null;
@@ -84,11 +85,39 @@ export function App() {
   // tracks locally whether the current user created the room (avoids waiting for Firestore)
   const [amHost, setAmHost] = useState(false);
 
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const postAuthTarget = useRef<"create" | "join" | null>(null);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement | null>(null);
+
   useEffect(() => {
-    signInAnonymously(auth)
-      .then((c) => setUid(c.user.uid))
-      .catch((e) => setErr(String(e.message)));
-  }, []);
+    if (!authReady || user) return;
+    if (roomCode || playerId) {
+      localStorage.removeItem(LS_ROOM);
+      localStorage.removeItem(LS_PLAYER);
+      setRoomCode("");
+      setPlayerId("");
+      setAmHost(false);
+      setView("intro");
+    }
+  }, [authReady, user, roomCode, playerId]);
+
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    const onDoc = (ev: MouseEvent) => {
+      if (userMenuRef.current?.contains(ev.target as Node)) return;
+      setUserMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [userMenuOpen]);
+
+  useEffect(() => {
+    if ((view !== "create" && view !== "joinName") || !user) return;
+    const hint = (user.displayName ?? "").trim().slice(0, 20);
+    if (!hint) return;
+    setName((prev) => (prev.trim() ? prev : hint));
+  }, [view, user]);
 
   useEffect(() => {
     if (room?.status === "day" && Number(room.round ?? 1) === 1) {
@@ -219,6 +248,42 @@ export function App() {
     setView("intro");
     setJoinCodeArr(["", "", "", ""]);
     setErr(null);
+    setAuthModalOpen(false);
+    postAuthTarget.current = null;
+    setUserMenuOpen(false);
+  };
+
+  const handleAuthSuccess = () => {
+    setAuthModalOpen(false);
+    const t = postAuthTarget.current;
+    postAuthTarget.current = null;
+    const u = auth.currentUser;
+    const hint = (u?.displayName ?? "").trim().slice(0, 20);
+    if (hint) setName((prev) => (prev.trim() ? prev : hint));
+    if (t === "create") setView("create");
+    else if (t === "join") setView("join");
+  };
+
+  const handleLandingSignOut = async () => {
+    setUserMenuOpen(false);
+    try {
+      await signOutUser();
+      leave();
+    } catch {
+      setErr("Algo deu errado. Tente novamente.");
+    }
+  };
+
+  const landingUserInitials = (): string => {
+    const dn = (user?.displayName ?? "").trim();
+    if (dn) {
+      const parts = dn.split(/\s+/).filter(Boolean);
+      if (parts.length >= 2) return (parts[0]![0]! + parts[1]![0]!).toUpperCase();
+      return dn.slice(0, 2).toUpperCase();
+    }
+    const em = (user?.email ?? "").trim();
+    if (em) return em.slice(0, 2).toUpperCase();
+    return "?";
   };
 
   const updateJoinDigit = (index: number, raw: string) => {
@@ -251,10 +316,15 @@ export function App() {
       if (!me?.wolfBiteUsed) opts.push({ value: "bite", label: "morder (uso único)" });
       return opts;
     }
-    if (r === "iara") return [
-      { value: "seduce", label: "seduzir" },
-      { value: "eliminate_special", label: "Voz Encantadora (uso único)" },
-    ];
+    if (r === "iara") {
+      const round = Number(room?.round ?? 1);
+      const voiceUsed = me?.iaraSeductionBlockedThroughRound != null;
+      const seductionBlocked = voiceUsed && round <= Number(me!.iaraSeductionBlockedThroughRound);
+      const opts: { value: string; label: string }[] = [];
+      if (!seductionBlocked) opts.push({ value: "seduce", label: "seduzir" });
+      if (!voiceUsed) opts.push({ value: "eliminate_special", label: "Voz Encantadora (uso único)" });
+      return opts;
+    }
     if (r === "mula") {
       const opts = [{ value: "terrorize", label: "aterrorizar" }];
       if (!me?.mulaExorcizeUsed) opts.push({ value: "exorcize", label: "Exorcismo da Vingança (uso único)" });
@@ -278,7 +348,7 @@ export function App() {
     };
     if (single[r]) return [single[r]];
     return [];
-  }, [myRole, players, playerId]);
+  }, [myRole, players, playerId, room?.round]);
 
   useEffect(() => {
     setNightAction(roleActionOptions[0]?.value ?? "eliminate");
@@ -334,7 +404,7 @@ export function App() {
 
   // ── Connecting screen ──
 
-  if (!uid) {
+  if (!authReady) {
     return (
       <div className="page connecting-page">
         <div className="connecting-content">
@@ -349,10 +419,63 @@ export function App() {
   // ── Entry flow ──
 
   if (!roomCode) {
+    const authModal = (
+      <AuthModal
+        open={authModalOpen}
+        onClose={() => {
+          setAuthModalOpen(false);
+          postAuthTarget.current = null;
+        }}
+        onSuccess={handleAuthSuccess}
+      />
+    );
     if (view === "intro") {
       return (
-        <div className="page">
-          <div className="intro-top-deco" aria-hidden="true">
+        <>
+          <div className="page page--landing">
+            <div className="landing-user-corner">
+              {user && (
+                <div
+                  className={`landing-user-menu-wrap${userMenuOpen ? " is-open" : ""}`}
+                  ref={userMenuRef}
+                >
+                  <button
+                    type="button"
+                    className="landing-user-trigger"
+                    aria-expanded={userMenuOpen}
+                    aria-haspopup="menu"
+                    onClick={() => setUserMenuOpen((o) => !o)}
+                  >
+                    {user.photoURL ? (
+                      <img src={user.photoURL} alt="" className="landing-user-avatar" />
+                    ) : (
+                      <span className="landing-user-initials">{landingUserInitials()}</span>
+                    )}
+                  </button>
+                  {userMenuOpen && (
+                    <div className="landing-user-dropdown" role="menu">
+                      <button
+                        type="button"
+                        className="landing-user-dropdown-item landing-user-dropdown-item--muted"
+                        disabled
+                        role="menuitem"
+                      >
+                        Minha conta
+                      </button>
+                      <button
+                        type="button"
+                        className="landing-user-dropdown-item"
+                        role="menuitem"
+                        onClick={() => void handleLandingSignOut()}
+                      >
+                        Sair
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="intro-top-deco" aria-hidden="true">
             <div className="deco-divider">
               <span className="deco-glyph">◆ ◆ ◆</span>
             </div>
@@ -415,7 +538,14 @@ export function App() {
             <button
               type="button"
               className="primary-btn"
-              onClick={() => setView("create")}
+              onClick={() => {
+                if (!user) {
+                  postAuthTarget.current = "create";
+                  setAuthModalOpen(true);
+                  return;
+                }
+                setView("create");
+              }}
             >
               <div className="btn-stack">
                 <span className="btn-title">Criar uma sala</span>
@@ -430,6 +560,11 @@ export function App() {
               className="ghost-btn"
               onClick={() => {
                 setJoinCodeArr(["", "", "", ""]);
+                if (!user) {
+                  postAuthTarget.current = "join";
+                  setAuthModalOpen(true);
+                  return;
+                }
                 setView("join");
               }}
             >
@@ -448,13 +583,16 @@ export function App() {
               <span className="deco-glyph">◆ ◆ ◆</span>
             </div>
           </div>
-        </div>
+          </div>
+          {authModal}
+        </>
       );
     }
 
     if (view === "create") {
       return (
-        <div className="page">
+        <>
+          <div className="page">
           <div className="top-bar">
             <button type="button" className="back-link" onClick={goIntro}>
               ← voltar
@@ -494,7 +632,7 @@ export function App() {
               <button
                 type="button"
                 className="primary-btn"
-                disabled={anyPending || !name.trim()}
+                disabled={anyPending || !name.trim() || !uid}
                 onClick={createRoom}
               >
                 <div className="btn-stack">
@@ -511,12 +649,15 @@ export function App() {
             </div>
           </div>
         </div>
+        {authModal}
+        </>
       );
     }
 
     if (view === "join") {
       return (
-        <div className="page">
+        <>
+          <div className="page">
           <div className="top-bar">
             <button type="button" className="back-link" onClick={goIntro}>
               ← voltar
@@ -554,12 +695,15 @@ export function App() {
             </div>
           </div>
         </div>
+        {authModal}
+        </>
       );
     }
 
     if (view === "joinName") {
       return (
-        <div className="page">
+        <>
+          <div className="page">
           <div className="top-bar">
             <button
               type="button"
@@ -600,7 +744,7 @@ export function App() {
               <button
                 type="button"
                 className="primary-btn"
-                disabled={anyPending || !name.trim()}
+                disabled={anyPending || !name.trim() || !uid}
                 onClick={joinRoom}
               >
                 <div className="btn-stack">
@@ -617,6 +761,8 @@ export function App() {
             </div>
           </div>
         </div>
+        {authModal}
+        </>
       );
     }
   }

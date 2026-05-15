@@ -4,7 +4,8 @@ import {
   resolveDawn,
   DAY_OPENING,
   tallyExpulsionVotes,
-  checkCollectiveWin,
+  checkCollectiveWinDetailed,
+  collectiveWinChronicleMessagePt,
 } from "folclore-game-engine";
 import type { RoleId } from "folclore-game-engine";
 import { db } from "./db.js";
@@ -77,6 +78,8 @@ export async function finalizeNight(roomCode: string, round: number) {
       mulaExorcizeUsed: Boolean(p.mulaExorcizeUsed),
       geniCharmUsed: Boolean(p.geniCharmUsed),
       catechized: Boolean(p.catechized),
+      iaraSeductionBlockedThroughRound:
+        p.iaraSeductionBlockedThroughRound == null ? null : Number(p.iaraSeductionBlockedThroughRound),
     };
   }
 
@@ -107,6 +110,11 @@ export async function finalizeNight(roomCode: string, round: number) {
     };
     if (pl.silenced) upd.silencedUntil = Timestamp.fromMillis(now + 120_000);
     else upd.silencedUntil = FieldValue.delete();
+    if (pl.iaraSeductionBlockedThroughRound != null) {
+      upd.iaraSeductionBlockedThroughRound = pl.iaraSeductionBlockedThroughRound;
+    } else {
+      upd.iaraSeductionBlockedThroughRound = FieldValue.delete();
+    }
     batch.update(ref, upd);
   }
 
@@ -220,6 +228,14 @@ export async function finalizeNight(roomCode: string, round: number) {
     }
   }
 
+  for (const win of res.individualWins) {
+    if (win.type !== "iara_delegado" && win.type !== "mula_padre") continue;
+    const winPlayer = players.find((p) => p.id === win.playerId);
+    if (winPlayer && !winPlayer.individualObjectiveMet) {
+      postObjectiveUpdates.push(roomRef.collection("players").doc(win.playerId).update({ individualObjectiveMet: true }));
+    }
+  }
+
   await Promise.all(postObjectiveUpdates);
 
   const botIds = new Set(players.filter((p) => Boolean(p.isBot)).map((p) => p.id));
@@ -317,13 +333,30 @@ export async function finalizeDay(roomCode: string, round: number) {
           p.alignment === "moradores" || p.alignment === "criaturas" ? p.alignment : null,
       };
     }
-    const forcedWinner = checkCollectiveWin(wpCheck, round, Number(room.maxRounds ?? 7)) ?? "bots";
+    const maxR = Number(room.maxRounds ?? 7);
+    const detail = checkCollectiveWinDetailed(wpCheck, round, maxR);
+    const forcedWinner = detail.winner ?? "bots";
     const revealedRolesCheck: Record<string, string> = {};
     for (const p of players) {
       const r = secrets[p.id]?.role;
       if (r) revealedRolesCheck[p.id] = r;
     }
-    await roomRef.update({ status: "ended", phase: "ended", winner: forcedWinner, votingOpen: false, revealedRoles: revealedRolesCheck });
+    const endBatch = db.batch();
+    endBatch.update(roomRef, { status: "ended", phase: "ended", winner: forcedWinner, votingOpen: false, revealedRoles: revealedRolesCheck });
+    const endMsg =
+      forcedWinner === "bots"
+        ? "Fim da partida: não restou nenhum jogador humano na mesa — Apocalipse Robô."
+        : collectiveWinChronicleMessagePt(detail);
+    if (endMsg) {
+      endBatch.set(roomRef.collection("publicLogEntries").doc(), {
+        round,
+        type: "chronicle_end",
+        message: endMsg,
+        timestamp: Date.now(),
+        createdAt: FieldValue.serverTimestamp(),
+      });
+    }
+    await endBatch.commit();
     return;
   }
 
@@ -395,14 +428,24 @@ export async function finalizeDay(roomCode: string, round: number) {
         const r = secrets[p.id]?.role;
         if (r) revealedRoles[p.id] = r;
       }
-      await roomRef.update({
-        status: "ended",
-        phase: "ended",
-        winner: brasPlayer.id,
-        pendingBrasChoice: false,
-        votingOpen: false,
-        revealedRoles,
-      });
+      await Promise.all([
+        roomRef.update({
+          status: "ended",
+          phase: "ended",
+          winner: brasPlayer.id,
+          pendingBrasChoice: false,
+          votingOpen: false,
+          revealedRoles,
+          individualWins: FieldValue.arrayUnion({
+            playerId: brasPlayer.id,
+            role: "bras_cubas",
+            type: "bras_tolo_encerra",
+            round,
+            timestamp: Date.now(),
+          }),
+        }),
+        roomRef.collection("players").doc(brasPlayer.id).update({ individualObjectiveMet: true }),
+      ]);
     }
     return;
   }
@@ -424,14 +467,28 @@ export async function finalizeDay(roomCode: string, round: number) {
           p.alignment === "moradores" || p.alignment === "criaturas" ? p.alignment : null,
       };
     }
-    const w = checkCollectiveWin(winPlayers, round, Number(room.maxRounds ?? 7));
+    const maxR = Number(room.maxRounds ?? 7);
+    const winDetail = checkCollectiveWinDetailed(winPlayers, round, maxR);
+    const w = winDetail.winner;
     if (w) {
       const revealedRoles: Record<string, string> = {};
       for (const p of snaps) {
         const r = sec[p.id]?.role;
         if (r) revealedRoles[p.id] = r;
       }
-      await roomRef.update({ status: "ended", phase: "ended", winner: w, votingOpen: false, revealedRoles });
+      const endMsg = collectiveWinChronicleMessagePt(winDetail);
+      const endBatch = db.batch();
+      endBatch.update(roomRef, { status: "ended", phase: "ended", winner: w, votingOpen: false, revealedRoles });
+      if (endMsg) {
+        endBatch.set(roomRef.collection("publicLogEntries").doc(), {
+          round,
+          type: "chronicle_end",
+          message: endMsg,
+          timestamp: Date.now(),
+          createdAt: FieldValue.serverTimestamp(),
+        });
+      }
+      await endBatch.commit();
       return;
     }
   }

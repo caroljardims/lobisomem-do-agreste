@@ -41,7 +41,6 @@ export async function processBotNightActions(roomCode: string, round: number): P
 
   const nightRef = roomRef.collection("nightActions").doc(String(round));
   const remainingPending: RoleId[] = [];
-  let saciActed = false;
   let geniInvestigatedTargets = [...((room.geniInvestigatedTargets as string[]) ?? [])];
 
   for (const role of pendingRoles) {
@@ -95,11 +94,9 @@ export async function processBotNightActions(roomCode: string, round: number): P
     if (role === "geni" && targetId && !geniInvestigatedTargets.includes(targetId)) {
       geniInvestigatedTargets = [...geniInvestigatedTargets, targetId];
     }
-    if (role === "saci") saciActed = true;
   }
 
   const roomUpdates: Record<string, unknown> = {};
-  if (saciActed) roomUpdates.saciActedThisNight = true;
   if (remainingPending.length !== pendingRoles.length) roomUpdates.nightPendingRoles = remainingPending;
   if (readyBotIds.length > 0) roomUpdates.nightReadyPlayerIds = FieldValue.arrayUnion(...readyBotIds);
   const initialGeni = (room.geniInvestigatedTargets as string[]) ?? [];

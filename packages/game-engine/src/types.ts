@@ -77,6 +77,8 @@ export interface PlayerDawnState {
   geniCharmUsed: boolean;
   /** Catequizado pelo Padre nesta rodada — imune a Iara e Mula nessa noite. */
   catechized: boolean;
+  /** Iara: não pode usar sedução enquanto `round <= este valor` (após Voz Encantadora). */
+  iaraSeductionBlockedThroughRound?: number | null;
 }
 
 export interface DawnResolveInput {

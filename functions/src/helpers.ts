@@ -80,7 +80,6 @@ export async function startNightSequence(roomCode: string, round: number) {
       nightOrderRoles: order,
       nightPendingRoles: order,
       nightReadyPlayerIds: [],
-      saciActedThisNight: false,
     }),
     ...loboUpdates,
   ]);

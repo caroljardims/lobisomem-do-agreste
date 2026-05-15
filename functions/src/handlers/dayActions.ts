@@ -1,7 +1,8 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import {
-  checkCollectiveWin,
+  checkCollectiveWinDetailed,
+  collectiveWinChronicleMessagePt,
   displayRoleName,
   isCreatureRole,
   type WinPlayerSnapshot,
@@ -31,13 +32,24 @@ export const brasContinueChoice = onCall(async (req) => {
       const r = secrets[p.id]?.role;
       if (r) revealedRoles[p.id] = r;
     }
-    await roomRef.update({
-      status: "ended",
-      phase: "ended",
-      winner: me.id,
-      pendingBrasChoice: false,
-      revealedRoles,
-    });
+    const round = Number(roomSnap.data()!.round ?? 1);
+    await Promise.all([
+      roomRef.update({
+        status: "ended",
+        phase: "ended",
+        winner: me.id,
+        pendingBrasChoice: false,
+        revealedRoles,
+        individualWins: FieldValue.arrayUnion({
+          playerId: me.id,
+          role: "bras_cubas",
+          type: "bras_tolo_encerra",
+          round,
+          timestamp: Date.now(),
+        }),
+      }),
+      roomRef.collection("players").doc(me.id).update({ individualObjectiveMet: true }),
+    ]);
   } else {
     const validRoles = Object.keys(ROLE_SIDE) as RoleId[];
     const resolvedRole = (chosenRole && validRoles.includes(chosenRole as RoleId))
@@ -50,6 +62,7 @@ export const brasContinueChoice = onCall(async (req) => {
       mulaExorcizeUsed: false,
       geniCharmUsed: false,
       wolfBiteUsed: false,
+      iaraSeductionBlockedThroughRound: FieldValue.delete(),
       individualObjectiveMet: false,
       actionUsed: false,
       publicReveal: FieldValue.delete(),
@@ -118,7 +131,18 @@ export const coronelAccusationVote = onCall(async (req) => {
     if (coronelPlayer) {
       b.update(roomRef.collection("players").doc(coronelPlayer.id), { individualObjectiveMet: true });
     }
-    b.update(roomRef, { daySubPhase: "idle", coronelVotesYes: {} });
+    const round = Number(room.round ?? 1);
+    const roomPatch: Record<string, unknown> = { daySubPhase: "idle", coronelVotesYes: {} };
+    if (coronelPlayer) {
+      roomPatch.individualWins = FieldValue.arrayUnion({
+        playerId: coronelPlayer.id,
+        role: "coronel",
+        type: "coronel_acusacao_boitata",
+        round,
+        timestamp: Date.now(),
+      });
+    }
+    b.update(roomRef, roomPatch);
     await b.commit();
   } else if (majority) {
     const coronelName = coronelPlayer?.name ?? "Coronel";
@@ -228,14 +252,27 @@ export const cangaceiroTiroCerto = onCall(async (req) => {
         p.alignment === "moradores" || p.alignment === "criaturas" ? p.alignment : null,
     };
   }
-  const w = checkCollectiveWin(winPlayers, round, Number(room.maxRounds ?? 7));
+  const winDetail = checkCollectiveWinDetailed(winPlayers, round, Number(room.maxRounds ?? 7));
+  const w = winDetail.winner;
   if (w) {
     const revealedRoles: Record<string, string> = {};
     for (const p of snaps2) {
       const r = sec2[p.id]?.role;
       if (r) revealedRoles[p.id] = r;
     }
-    await roomRef.update({ status: "ended", phase: "ended", winner: w, votingOpen: false, revealedRoles });
+    const endMsg = collectiveWinChronicleMessagePt(winDetail);
+    const bEnd = db.batch();
+    bEnd.update(roomRef, { status: "ended", phase: "ended", winner: w, votingOpen: false, revealedRoles });
+    if (endMsg) {
+      bEnd.set(roomRef.collection("publicLogEntries").doc(), {
+        round,
+        type: "chronicle_end",
+        message: endMsg,
+        timestamp: Date.now(),
+        createdAt: FieldValue.serverTimestamp(),
+      });
+    }
+    await bEnd.commit();
   }
 
   return { hit: creature, consulted, ended: Boolean(w) };

@@ -29,5 +29,22 @@ export function validateNightAction(
   if (player.role === "doutor" && submission.targetId && player.doctorLastTargetId === submission.targetId) {
     return { ok: false, error: "Doutor não pode salvar o mesmo alvo em noites consecutivas." };
   }
+  if (player.role === "lobisomem" && submission.action === "bite" && player.wolfBiteUsed) {
+    return { ok: false, error: "Morder já foi usado nesta partida." };
+  }
+  if (player.role === "mula" && submission.action === "exorcize" && player.mulaExorcizeUsed) {
+    return { ok: false, error: "Exorcismo da Vingança já foi usado nesta partida." };
+  }
+  if (player.role === "geni" && submission.action === "charm" && player.geniCharmUsed) {
+    return { ok: false, error: "Charme de Verdade já foi usado nesta partida." };
+  }
+  if (
+    player.role === "iara" &&
+    submission.action === "seduce" &&
+    player.iaraSeductionBlockedThroughRound != null &&
+    ctx.round <= player.iaraSeductionBlockedThroughRound
+  ) {
+    return { ok: false, error: "Sedução bloqueada após o uso da Voz Encantadora." };
+  }
   return { ok: true };
 }

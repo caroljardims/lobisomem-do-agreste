@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import { BtnSpinner } from "../BtnSpinner.js";
 import { describeNightAction } from "../../lib/describeNightAction.js";
+import { individualWinChronicleLine } from "../../lib/individualWinLabels.js";
 import { ROLE_DISPLAY, ROLE_LORE, RoleLoreContent } from "../../lib/roleStories.js";
 import type { PlayerDoc, PublicLogEntry, RoomDoc } from "../../types.js";
 
@@ -86,6 +87,9 @@ export function EndScreen({
     if (p.id) playerNameById[p.id] = p.name ?? p.id;
   }
 
+  const individualWins = Array.isArray(room.individualWins) ? [...room.individualWins] : [];
+  individualWins.sort((a, b) => a.round - b.round || a.timestamp - b.timestamp);
+
   return (
     <div className="stack stack--dense">
       {myRole && ROLE_LORE[myRole] && (
@@ -156,6 +160,19 @@ export function EndScreen({
       </div>
 
       <div className="game-card log-card chronicle-card">
+        <strong className="chronicle-title">Objetivos individuais</strong>
+        {individualWins.length === 0 ? (
+          <p className="muted chronicle-line">Nenhum objetivo individual foi registrado nesta partida.</p>
+        ) : (
+          individualWins.map((w, idx) => (
+            <p key={`${w.playerId}-${w.type}-${w.round}-${idx}`} className="chronicle-line chronicle-individual-win">
+              {individualWinChronicleLine(w, playerNameById[w.playerId] ?? w.playerId)}
+            </p>
+          ))
+        )}
+      </div>
+
+      <div className="game-card log-card chronicle-card">
         <strong className="chronicle-title">Crônica da partida</strong>
         {!historyLoaded ? (
           <p className="muted">Carregando histórico…</p>
@@ -167,6 +184,12 @@ export function EndScreen({
               (e) => e.round === r && ["death", "bite", "terror", "invocation", "special"].includes(e.type ?? ""),
             );
             const dayPublicEntries = publicLog.filter((e) => e.round === r && e.type === "expulsion");
+            const roundChronicleEnd = publicLog.filter((e) => e.round === r && e.type === "chronicle_end");
+            const neutralAlignExplain = players.filter((p) => {
+              const role = revealed[p.id ?? ""];
+              const al = p.alignment === "moradores" || p.alignment === "criaturas" ? p.alignment : null;
+              return (role === "curupira" || role === "boitata") && al;
+            });
             const hasVotes = Object.keys(roundVotes).length > 0;
             const actionLines = Object.entries(nightActions).flatMap(([pid, act]) => {
               if (
@@ -193,7 +216,26 @@ export function EndScreen({
             return (
               <div key={r} className="chronicle-round">
                 <p className="chronicle-phase">Noite {r}</p>
-                {actionLines.length === 0 && nightPublicEntries.length === 0 && (
+                {r === 1 &&
+                  neutralAlignExplain.map((p) => {
+                    const role = revealed[p.id ?? ""];
+                    const al =
+                      p.alignment === "moradores" || p.alignment === "criaturas" ? p.alignment : null;
+                    if (!role || !al) return null;
+                    const lado =
+                      al === "moradores"
+                        ? "moradores (comunidade da cidade)"
+                        : "criaturas (folclore)";
+                    return (
+                      <p key={p.id} className="chronicle-line chronicle-align-prologue">
+                        <strong>{p.name}</strong> ({ROLE_DISPLAY[role] ?? role}, neutro) alinhou-se aos{" "}
+                        <strong>{lado}</strong> na primeira noite. Na vitória coletiva, passa a contar nesse
+                        time ao comparar quantos jogadores vivos restam de cada lado (criaturas + neutros do
+                        folclore vs. moradores + neutros da comunidade).
+                      </p>
+                    );
+                  })}
+                {actionLines.length === 0 && nightPublicEntries.length === 0 && neutralAlignExplain.length === 0 && (
                   <p className="muted chronicle-line">Sem registros.</p>
                 )}
                 {actionLines.map(({ pid, role, desc }) => (
@@ -222,6 +264,11 @@ export function EndScreen({
                     })}
                     {dayPublicEntries.map((e) => (
                       <p key={e.id} className="chronicle-outcome">
+                        {e.message}
+                      </p>
+                    ))}
+                    {roundChronicleEnd.map((e) => (
+                      <p key={e.id} className="chronicle-outcome chronicle-end-rule">
                         {e.message}
                       </p>
                     ))}

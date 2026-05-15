@@ -28,6 +28,9 @@ export const CREATURE_ROLES: RoleId[] = [
   "iara",
 ];
 
+/** Criaturas com objetivo individual rastreado em `individualObjectiveMet` (exclui Saci). */
+export const CREATURE_ROLES_WITH_INDIVIDUAL_OBJECTIVE: RoleId[] = ["lobisomem", "mula", "boto", "iara"];
+
 export const NEUTRAL_ROLES: RoleId[] = ["curupira", "boitata", "bras_cubas"];
 
 export function isCreatureRole(role: RoleId): boolean {

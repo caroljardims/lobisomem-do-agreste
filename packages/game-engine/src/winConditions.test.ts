@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { checkCollectiveWin } from "./winConditions.js";
+import {
+  checkCollectiveWin,
+  checkCollectiveWinDetailed,
+  collectiveWinChronicleMessagePt,
+} from "./winConditions.js";
 import type { WinPlayerSnapshot } from "./winConditions.js";
 
 function snap(id: string, role: WinPlayerSnapshot["role"], opts: Partial<WinPlayerSnapshot> = {}): WinPlayerSnapshot {
@@ -74,12 +78,27 @@ describe("checkCollectiveWin", () => {
     expect(checkCollectiveWin(players, 1, 5)).toBe("criaturas");
   });
 
-  it("retorna 'criaturas' quando rodada excede maxRounds", () => {
+  it("retorna 'criaturas' por objetivos individuais sem exigir Saci (sem objetivo rastreado)", () => {
     const players = {
-      w: snap("w", "lobisomem"),
+      w: snap("w", "lobisomem", { individualObjectiveMet: true }),
+      s: snap("s", "saci", { individualObjectiveMet: false }),
       a: snap("a", "aldeao"),
       d: snap("d", "doutor"),
+      c: snap("c", "cartomante"),
     };
-    expect(checkCollectiveWin(players, 6, 5)).toBe("criaturas");
+    expect(checkCollectiveWin(players, 1, 5)).toBe("criaturas");
+  });
+
+  it("texto da crônica para vitória por maioria ou empate no placar", () => {
+    const players = {
+      w: snap("w", "lobisomem"),
+      s: snap("s", "saci"),
+      a: snap("a", "aldeao"),
+    };
+    const d = checkCollectiveWinDetailed(players, 1, 5);
+    expect(d.reason).toBe("creatures_majority_or_tie");
+    const msg = collectiveWinChronicleMessagePt(d);
+    expect(msg).toContain("folclore");
+    expect(msg).toContain("Vitória das criaturas");
   });
 });

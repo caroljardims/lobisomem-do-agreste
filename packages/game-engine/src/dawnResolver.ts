@@ -167,6 +167,7 @@ export function resolveDawn(input: DawnResolveInput): DawnResolveResult {
           timestamp: input.now,
         });
       }
+      players[iara.playerId].iaraSeductionBlockedThroughRound = input.round + 2;
     } else if (iara.action.action === "seduce") {
       t.seduced = true;
     }

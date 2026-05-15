@@ -30,6 +30,14 @@ export type RoomDoc = DocumentData & {
   pendingSaciGorro?: boolean;
   coronelAccusationTarget?: string;
   revealedRoles?: Record<string, string>;
+  /** Vitórias individuais (não encerram a partida sozinhas); ver `individualWinChronicleLine`. */
+  individualWins?: Array<{
+    playerId: string;
+    role: string;
+    type: string;
+    round: number;
+    timestamp: number;
+  }>;
 };
 
 export type PlayerDoc = DocumentData & {
@@ -44,6 +52,7 @@ export type PlayerDoc = DocumentData & {
   wolfBiteUsed?: boolean;
   mulaExorcizeUsed?: boolean;
   geniCharmUsed?: boolean;
+  iaraSeductionBlockedThroughRound?: number | null;
   actionUsed?: boolean;
   publicReveal?: string;
   seduced?: boolean;
