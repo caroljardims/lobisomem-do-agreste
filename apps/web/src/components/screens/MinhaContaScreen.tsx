@@ -421,11 +421,15 @@ export function MinhaContaScreen(props: {
               <div className="account-favorites-lock">
                 <p className="account-favorites-lock-title">Favoritos premium</p>
                 <p className="muted">Escolha até 3 papéis para destacar no seu perfil.</p>
-                <p className="account-price">Desbloquear — {premiumPrice}</p>
-                {stripeUrl && (
-                  <button type="button" className="primary-btn" onClick={() => { window.location.href = stripeUrl; }}>
-                    Ir para pagamento
-                  </button>
+                {stripeUrl ? (
+                  <>
+                    <p className="account-price">Desbloquear — {premiumPrice}</p>
+                    <button type="button" className="primary-btn" onClick={() => { window.location.href = stripeUrl; }}>
+                      Ir para pagamento
+                    </button>
+                  </>
+                ) : (
+                  <p className="account-price">Em breve: selecionar personagens favoritos</p>
                 )}
               </div>
             )}
