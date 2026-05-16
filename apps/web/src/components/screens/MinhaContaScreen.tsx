@@ -422,14 +422,10 @@ export function MinhaContaScreen(props: {
                 <p className="account-favorites-lock-title">Favoritos premium</p>
                 <p className="muted">Escolha até 3 papéis para destacar no seu perfil.</p>
                 <p className="account-price">Desbloquear — {premiumPrice}</p>
-                {stripeUrl ? (
+                {stripeUrl && (
                   <button type="button" className="primary-btn" onClick={() => { window.location.href = stripeUrl; }}>
                     Ir para pagamento
                   </button>
-                ) : (
-                  <p className="muted" style={{ fontSize: 13 }}>
-                    Configure <code>VITE_STRIPE_CHECKOUT_URL</code> no ambiente para ativar o checkout.
-                  </p>
                 )}
               </div>
             )}
