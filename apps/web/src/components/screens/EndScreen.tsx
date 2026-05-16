@@ -62,7 +62,7 @@ export function EndScreen({
   roomCode,
 }: EndScreenProps) {
   const gameId = typeof room.lastGameHistoryId === "string" ? room.lastGameHistoryId : undefined;
-  const { summary, loaded: summaryLoaded } = useGameSummary(gameId);
+  const { summary, loaded: summaryLoaded, error: summaryError } = useGameSummary(gameId);
 
   const moradoresPlazaTie =
     room.winner === "moradores" && room.collectiveEndKind === "moradores_plaza_tie";
@@ -346,6 +346,8 @@ export function EndScreen({
         <strong className="chronicle-title">Pódio da noite</strong>
         {!summaryLoaded ? (
           <p className="muted chronicle-line">Carregando pontuação…</p>
+        ) : summaryError ? (
+          <p className="muted chronicle-line">{summaryError}</p>
         ) : !summary?.players?.length ? (
           <p className="muted chronicle-line">Resumo de pontos ainda não disponível.</p>
         ) : (
@@ -380,7 +382,7 @@ export function EndScreen({
                 {[...summary.players].sort((a, b) => a.rank - b.rank).map((row) => (
                   <tr key={row.playerId}>
                     <td>{row.rank}</td>
-                    <td>{row.displayName}</td>
+                    <td>{row.displayName}{row.isBot ? <span className="muted"> (bot)</span> : null}</td>
                     <td>{ROLE_DISPLAY[row.role] ?? row.role}</td>
                     <td>{row.points}</td>
                     <td>

@@ -2,6 +2,7 @@ import { initializeApp, type FirebaseApp } from "firebase/app";
 import { connectAuthEmulator, getAuth } from "firebase/auth";
 import { connectFirestoreEmulator, getFirestore } from "firebase/firestore";
 import { connectFunctionsEmulator, getFunctions, httpsCallable } from "firebase/functions";
+import { connectStorageEmulator, getStorage } from "firebase/storage";
 
 const useEmu = import.meta.env.VITE_USE_EMULATORS === "1";
 
@@ -17,12 +18,14 @@ const cfg = {
 export const app: FirebaseApp = initializeApp(cfg);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+export const storage = getStorage(app);
 export const fn = getFunctions(app, import.meta.env.VITE_FUNCTIONS_REGION ?? "us-central1");
 
 if (useEmu) {
   connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
   connectFirestoreEmulator(db, "127.0.0.1", 8080);
   connectFunctionsEmulator(fn, "127.0.0.1", 5001);
+  connectStorageEmulator(storage, "127.0.0.1", 9199);
 } else if (import.meta.env.VITE_FIREBASE_MEASUREMENT_ID) {
   void import("firebase/analytics").then(({ getAnalytics, isSupported }) => {
     isSupported().then((ok) => {

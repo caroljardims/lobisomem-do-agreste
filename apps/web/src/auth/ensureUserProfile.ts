@@ -29,6 +29,7 @@ export async function ensureUserProfile(user: User): Promise<void> {
       podiumCount: 0,
       bestGame: 0,
       favoriteRole: null,
+      rolePlayCounts: {},
       providers: providerIds.length ? providerIds : ["password"],
       isPremium: false,
       premiumSince: null,
@@ -61,6 +62,7 @@ export async function ensureUserProfile(user: User): Promise<void> {
   if (existing.bestGame === undefined) updates.bestGame = 0;
   if (existing.premiumSince === undefined) updates.premiumSince = null;
   if (existing.stripeCustomerId === undefined) updates.stripeCustomerId = null;
+  if (existing.rolePlayCounts === undefined) updates.rolePlayCounts = {};
 
   await updateDoc(ref, updates);
 }

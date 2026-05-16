@@ -8,6 +8,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -43,7 +44,15 @@ import { canBeExpulsionVoteTarget, canSubmitExpulsionVote } from "./lib/playerVo
 import type { PlayerDoc, RoomDoc, View } from "./types.js";
 import { BtnSpinner } from "./components/BtnSpinner.js";
 import { EndScreen } from "./components/screens/EndScreen.js";
-import { AccountView, RankingView } from "./components/LifetimeScreens.js";
+import { MinhaContaScreen } from "./components/screens/MinhaContaScreen.js";
+import {
+  closeAccountToHome,
+  migrateAccountHashToPathname,
+  navigateAccount,
+  readAccountRoute,
+  isMinhaContaPathname,
+  type AccountTab,
+} from "./lib/accountRoute.js";
 import { useMyPlayerPrivate } from "./hooks/useMyPlayerPrivate.js";
 
 function copyToClipboard(text: string) {
@@ -94,8 +103,8 @@ export function App() {
   const [cangConsultTarget, setCangConsultTarget] = useState("");
   const [tiroCertoTarget, setTiroCertoTarget] = useState("");
   const [tiroPreview, setTiroPreview] = useState<{ consulted: boolean; hint?: string } | null>(null);
-  const [routeHash, setRouteHash] = useState(() =>
-    typeof window !== "undefined" ? window.location.hash : "",
+  const [accountRoute, setAccountRoute] = useState<{ open: boolean; tab: AccountTab }>(() =>
+    typeof window !== "undefined" ? readAccountRoute() : { open: false, tab: "estatisticas" },
   );
   const [suspicionTarget, setSuspicionTarget] = useState("");
   const [suspicionSent, setSuspicionSent] = useState(false);
@@ -119,11 +128,30 @@ export function App() {
 
   const myPrivate = useMyPlayerPrivate(roomCode, playerId || undefined);
 
-  useEffect(() => {
-    const onHash = () => setRouteHash(window.location.hash);
-    window.addEventListener("hashchange", onHash);
-    return () => window.removeEventListener("hashchange", onHash);
+  const refreshAccountRoute = useCallback(() => {
+    setAccountRoute(readAccountRoute());
   }, []);
+
+  useLayoutEffect(() => {
+    if (typeof window === "undefined") return;
+    migrateAccountHashToPathname();
+    if (authReady && !user && isMinhaContaPathname(window.location.pathname)) {
+      window.history.replaceState(null, "", "/");
+      window.dispatchEvent(new Event("folhetim-route"));
+      setAuthModalOpen(true);
+    }
+    refreshAccountRoute();
+  }, [authReady, user, refreshAccountRoute]);
+
+  useEffect(() => {
+    const onRoute = () => refreshAccountRoute();
+    window.addEventListener("popstate", onRoute);
+    window.addEventListener("folhetim-route", onRoute);
+    return () => {
+      window.removeEventListener("popstate", onRoute);
+      window.removeEventListener("folhetim-route", onRoute);
+    };
+  }, [refreshAccountRoute]);
 
   useEffect(() => {
     if (!isLocalDebug()) return;
@@ -347,6 +375,9 @@ export function App() {
     setUserMenuOpen(false);
     try {
       await signOutUser();
+      if (typeof window !== "undefined" && isMinhaContaPathname(window.location.pathname)) {
+        closeAccountToHome();
+      }
       leave();
     } catch {
       setErr("Algo deu errado. Tente novamente.");
@@ -532,6 +563,35 @@ export function App() {
     );
   }
 
+  if (user && accountRoute.open) {
+    return (
+      <>
+        <MinhaContaScreen
+          user={user}
+          tab={accountRoute.tab}
+          onClose={() => closeAccountToHome()}
+          onSignOut={async () => {
+            try {
+              await signOutUser();
+              closeAccountToHome();
+              leave();
+            } catch {
+              setErr("Algo deu errado. Tente novamente.");
+            }
+          }}
+        />
+        <AuthModal
+          open={authModalOpen}
+          onClose={() => {
+            setAuthModalOpen(false);
+            postAuthTarget.current = null;
+          }}
+          onSuccess={handleAuthSuccess}
+        />
+      </>
+    );
+  }
+
   // ── Entry flow ──
 
   if (!roomCode) {
@@ -585,13 +645,35 @@ export function App() {
                         className="landing-user-dropdown-item"
                         role="menuitem"
                         onClick={() => {
-                          window.location.hash = "#/minha-conta";
-                          setRouteHash("#/minha-conta");
+                          navigateAccount("estatisticas");
                           setUserMenuOpen(false);
                         }}
                       >
                         Minha conta
                       </button>
+                      <button
+                        type="button"
+                        className="landing-user-dropdown-item"
+                        role="menuitem"
+                        onClick={() => {
+                          navigateAccount("favoritos");
+                          setUserMenuOpen(false);
+                        }}
+                      >
+                        Favoritos
+                      </button>
+                      <button
+                        type="button"
+                        className="landing-user-dropdown-item"
+                        role="menuitem"
+                        onClick={() => {
+                          navigateAccount("ranking");
+                          setUserMenuOpen(false);
+                        }}
+                      >
+                        Ranking
+                      </button>
+                      <div className="landing-user-dropdown-divider" role="separator" />
                       <button
                         type="button"
                         className="landing-user-dropdown-item"
@@ -947,13 +1029,6 @@ export function App() {
     </div>
   );
 
-  const hashRanking = routeHash === "#/ranking";
-  const hashAccount = routeHash === "#/minha-conta";
-  const clearHash = () => {
-    window.history.replaceState(null, "", window.location.pathname + window.location.search);
-    setRouteHash("");
-  };
-
   const isDebugSession = !!(room && isLocalDebug() && room.debug === true);
 
   return (
@@ -971,10 +1046,7 @@ export function App() {
           />
         </Suspense>
       )}
-      <div
-        className={`page${isDebugSession ? " page--debug" : ""}`}
-        style={hashRanking || hashAccount ? { display: "none" } : undefined}
-      >
+      <div className={`page${isDebugSession ? " page--debug" : ""}`}>
       <div className="top-bar">
         <button type="button" className="back-link" onClick={leave}>
           ← sair
@@ -992,8 +1064,7 @@ export function App() {
             className="back-link"
             style={{ marginLeft: "auto" }}
             onClick={() => {
-              window.location.hash = "#/ranking";
-              setRouteHash("#/ranking");
+              navigateAccount("ranking");
             }}
           >
             Ranking
@@ -1934,8 +2005,6 @@ export function App() {
       )}
 
     </div>
-      {hashRanking && <RankingView user={user} onClose={clearHash} />}
-      {hashAccount && <AccountView user={user} onClose={clearHash} />}
     </>
   );
 }

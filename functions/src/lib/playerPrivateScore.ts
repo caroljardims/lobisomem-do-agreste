@@ -9,7 +9,6 @@ export type MvpCategory =
   | "investigation"
   | "objective"
   | "survival"
-  | "brasExpulsion"
   | "brasRoundTease";
 
 const CATEGORY_FIELD: Record<MvpCategory, string> = {
@@ -19,7 +18,6 @@ const CATEGORY_FIELD: Record<MvpCategory, string> = {
   investigation: "bdInvestigation",
   objective: "bdObjective",
   survival: "bdSurvival",
-  brasExpulsion: "bdBrasExpulsion",
   brasRoundTease: "bdBrasRoundTease",
 };
 

@@ -113,7 +113,7 @@ export async function finalizeMvpLedgerIfNeeded(roomCode: string): Promise<void>
     rows.push({
       id: p.id,
       name: String(p.name ?? p.id),
-      uid: String(p.uid ?? ""),
+      uid: String(priv.authUid ?? p.uid ?? ""),
       isBot: Boolean(p.isBot),
       points,
       objectiveMet: Boolean(p.individualObjectiveMet),
@@ -135,6 +135,13 @@ export async function finalizeMvpLedgerIfNeeded(roomCode: string): Promise<void>
 
   const gameId = randomId();
   const tablePlayerCount = Number(room.gameTablePlayerCount ?? 0);
+  const participantUids = [
+    ...new Set(
+      rows
+        .filter((r) => !r.isBot && r.uid && !r.uid.startsWith("bot_"))
+        .map((r) => r.uid),
+    ),
+  ];
   const historyPlayers = rows.map((r) => {
     const priv = privateById.get(r.id) ?? {};
     const ws = winSnaps[r.id];
@@ -147,12 +154,74 @@ export async function finalizeMvpLedgerIfNeeded(roomCode: string): Promise<void>
       side: r.side,
       points: r.points,
       rank: rankById.get(r.id) ?? 0,
+      isBot: r.isBot,
       individualObjectiveMet: r.objectiveMet,
       collectiveWin: playerWonGame(winner, ws, r, tablePlayerCount),
       breakdown: breakdownFromPrivate(priv, survivalBonus),
     };
   });
 
+  // Gravar pontos de todos os jogadores humanos em paralelo ANTES de setar
+  // mvpLedgerApplied. Se qualquer transação falhar, a função pode ser
+  // reexecutada sem perda permanente de pontos.
+  await Promise.all(
+    rows
+      .filter((r) => !r.isBot && r.uid && !r.uid.startsWith("bot_"))
+      .map((r) => {
+        const rank = rankById.get(r.id) ?? 99;
+        const uref = db.collection("users").doc(r.uid);
+        const pref = db.collection("publicLeaderboard").doc(r.uid);
+        const won = playerWonGame(winner, winSnaps[r.id], r, tablePlayerCount);
+        return db.runTransaction(async (tx) => {
+          const [uSnap, pSnap] = await Promise.all([tx.get(uref), tx.get(pref)]);
+          const prevBest = Math.max(Number(uSnap.data()?.bestGame ?? 0), Number(pSnap.data()?.bestGame ?? 0));
+          const nextBest = Math.max(prevBest, r.points);
+          const uData = uSnap.data() ?? {};
+          const prevRc = (uData.rolePlayCounts as Record<string, number> | undefined) ?? {};
+          const nextRc = { ...prevRc, [r.role]: (prevRc[r.role] ?? 0) + 1 };
+          let favoriteRole: string | null = null;
+          let maxPlays = -1;
+          for (const [roleId, n] of Object.entries(nextRc)) {
+            const c = Number(n);
+            if (c > maxPlays || (c === maxPlays && (favoriteRole === null || roleId < favoriteRole))) {
+              maxPlays = c;
+              favoriteRole = roleId;
+            }
+          }
+          tx.set(
+            uref,
+            {
+              rolePlayCounts: nextRc,
+              favoriteRole,
+              totalPoints: FieldValue.increment(r.points),
+              gamesPlayed: FieldValue.increment(1),
+              gamesWon: FieldValue.increment(won ? 1 : 0),
+              mvpCount: FieldValue.increment(rank === 1 ? 1 : 0),
+              podiumCount: FieldValue.increment(rank <= 3 ? 1 : 0),
+              bestGame: nextBest,
+            },
+            { merge: true },
+          );
+          tx.set(
+            pref,
+            {
+              uid: r.uid,
+              displayName: r.name,
+              totalPoints: FieldValue.increment(r.points),
+              gamesPlayed: FieldValue.increment(1),
+              mvpCount: FieldValue.increment(rank === 1 ? 1 : 0),
+              podiumCount: FieldValue.increment(rank <= 3 ? 1 : 0),
+              bestGame: nextBest,
+              updatedAt: FieldValue.serverTimestamp(),
+            },
+            { merge: true },
+          );
+        });
+      }),
+  );
+
+  // Só marca como aplicado depois que todas as transações de usuário tiverem
+  // sucesso — garantindo que uma reexecução sempre parta do zero seguro.
   const batch = db.batch();
   batch.set(db.collection("gameHistory").doc(gameId), {
     roomCode,
@@ -160,46 +229,8 @@ export async function finalizeMvpLedgerIfNeeded(roomCode: string): Promise<void>
     winner,
     rounds: finalRound,
     players: historyPlayers,
+    participantUids,
   });
   batch.update(roomRef, { mvpLedgerApplied: true, lastGameHistoryId: gameId });
   await batch.commit();
-
-  for (const r of rows) {
-    if (r.isBot || !r.uid || r.uid.startsWith("bot_")) continue;
-    const rank = rankById.get(r.id) ?? 99;
-    const uref = db.collection("users").doc(r.uid);
-    const pref = db.collection("publicLeaderboard").doc(r.uid);
-    const won = playerWonGame(winner, winSnaps[r.id], r, tablePlayerCount);
-    await db.runTransaction(async (tx) => {
-      const [uSnap, pSnap] = await Promise.all([tx.get(uref), tx.get(pref)]);
-      const prevBest = Math.max(Number(uSnap.data()?.bestGame ?? 0), Number(pSnap.data()?.bestGame ?? 0));
-      const nextBest = Math.max(prevBest, r.points);
-      tx.set(
-        uref,
-        {
-          totalPoints: FieldValue.increment(r.points),
-          gamesPlayed: FieldValue.increment(1),
-          gamesWon: FieldValue.increment(won ? 1 : 0),
-          mvpCount: FieldValue.increment(rank === 1 ? 1 : 0),
-          podiumCount: FieldValue.increment(rank <= 3 ? 1 : 0),
-          bestGame: nextBest,
-        },
-        { merge: true },
-      );
-      tx.set(
-        pref,
-        {
-          uid: r.uid,
-          displayName: r.name,
-          totalPoints: FieldValue.increment(r.points),
-          gamesPlayed: FieldValue.increment(1),
-          mvpCount: FieldValue.increment(rank === 1 ? 1 : 0),
-          podiumCount: FieldValue.increment(rank <= 3 ? 1 : 0),
-          bestGame: nextBest,
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true },
-      );
-    });
-  }
 }

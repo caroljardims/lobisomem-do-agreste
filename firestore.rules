@@ -6,6 +6,24 @@ service cloud.firestore {
     }
 
     // Per-user profile (client may create/update mirror fields from Auth).
+    function userForbiddenPatch() {
+      return request.resource.data.diff(resource.data).changedKeys().hasAny([
+        'gamesPlayed',
+        'gamesWon',
+        'totalPoints',
+        'mvpCount',
+        'podiumCount',
+        'bestGame',
+        'favoriteRole',
+        'rolePlayCounts',
+        'isPremium',
+        'premiumSince',
+        'stripeCustomerId',
+        'createdAt',
+        'uid'
+      ]);
+    }
+
     match /users/{userId} {
       allow read: if isAuthed() && request.auth.uid == userId;
       allow create: if isAuthed()
@@ -13,12 +31,16 @@ service cloud.firestore {
         && request.resource.data.uid == userId;
       allow update: if isAuthed()
         && request.auth.uid == userId
-        && request.resource.data.uid == userId;
+        && request.resource.data.uid == userId
+        && !userForbiddenPatch();
       allow delete: if false;
     }
 
     match /gameHistory/{gameId} {
-      allow read: if isAuthed();
+      allow read: if isAuthed() && (
+        request.auth.uid in resource.data.participantUids
+        || !('participantUids' in resource.data)
+      );
       allow write: if false;
     }
 
