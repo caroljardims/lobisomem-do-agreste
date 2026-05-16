@@ -17,6 +17,7 @@ import { finalizeMvpLedgerIfNeeded } from "./endGameScoring.js";
 import { grantAldeaoObjectiveIfMoradoresWon, grantObjectiveMvp } from "./playerPrivateScore.js";
 import { scoreBrasRoundTease, scoreMvpAtDawn, scoreMvpVotesAfterDay } from "./mvpDawnAndVoteScoring.js";
 import { beginSaciGorroOffer, runPostExpulsionTail } from "./saciGorro.js";
+import { buildBotContext, getBotMessagesForDayOpen } from "./botChat/index.js";
 
 type LoadedPlayer = Awaited<ReturnType<typeof loadPlayers>>[number];
 type SecretsMap = Awaited<ReturnType<typeof loadSecrets>>;
@@ -479,30 +480,86 @@ export async function finalizeNight(roomCode: string, round: number) {
 
   const botIds = new Set(players.filter((p) => Boolean(p.isBot)).map((p) => p.id));
 
-  const BOT_PHRASES = [
-    "Não dormiu bem essa noite não, não…",
-    "Tem coisa estranha acontecendo por aqui.",
-    "Eu não sei de nada, mas suspeito de tudo.",
-    "Essa noite tava silenciosa demais pra ser inocente.",
-    "Alguém aqui sabe mais do que tá mostrando.",
-    "Vou ficar de olho em todo mundo hoje.",
-    "Se ficar quieto parece suspeito. Se falar parece suspeito. Que dilema.",
-    "O sertão não perdoa quem acredita demais.",
-    "Cuidado com quem sorri muito de manhã.",
-    "Mais uma noite que passou. Será que vai ter mais uma?",
-  ];
   const botPlayers = Object.values(res.players).filter(
     (p) => p.alive && !p.eliminated && !p.expelled && !p.silenced && botIds.has(p.id),
   );
   if (botPlayers.length > 0) {
-    const chatBot = botPlayers[Math.floor(Math.random() * botPlayers.length)];
-    const phrase = BOT_PHRASES[Math.floor(Math.random() * BOT_PHRASES.length)];
-    await roomRef.collection("chat").add({
-      playerId: chatBot.id,
-      name: chatBot.name,
-      text: phrase,
-      createdAt: FieldValue.serverTimestamp(),
-    });
+    const rng = Math.random;
+    const livingRefs = players
+      .filter((pl) => {
+        const st = res.players[pl.id];
+        return Boolean(st?.alive && !st.eliminated && !st.expelled);
+      })
+      .map((pl) => ({
+        id: pl.id,
+        name: String(pl.name ?? pl.id),
+        side: (secrets[pl.id]?.side ?? "morador") as "criatura" | "morador" | "neutro",
+        isBot: Boolean(pl.isBot),
+      }));
+
+    let chatHistory: Array<{ playerId: string; name: string; text: string; type?: string }> = [];
+    try {
+      const chatSnap = await roomRef.collection("chat").orderBy("createdAt", "desc").limit(40).get();
+      chatHistory = chatSnap.docs
+        .map((d) => {
+          const x = d.data() as Record<string, unknown>;
+          return {
+            playerId: String(x.playerId ?? ""),
+            name: String(x.name ?? ""),
+            text: String(x.text ?? ""),
+            type: x.type as string | undefined,
+          };
+        })
+        .reverse();
+    } catch {
+      const chatSnap = await roomRef.collection("chat").limit(40).get();
+      chatHistory = chatSnap.docs.map((d) => {
+        const x = d.data() as Record<string, unknown>;
+        return {
+          playerId: String(x.playerId ?? ""),
+          name: String(x.name ?? ""),
+          text: String(x.text ?? ""),
+          type: x.type as string | undefined,
+        };
+      });
+    }
+
+    const publicLogThisDawn = res.publicLog.map((e) => ({
+      type: e.type,
+      message: e.message,
+    }));
+    const botoPlayerId = players.find((pl) => secrets[pl.id]?.role === "boto")?.id ?? null;
+    const iaraPlayerId = players.find((pl) => secrets[pl.id]?.role === "iara")?.id ?? null;
+    const padrePlayerId = players.find((pl) => secrets[pl.id]?.role === "padre")?.id ?? null;
+
+    // Embaralha bots para que a ordem de fala varie
+    const shuffledBots = [...botPlayers].sort(() => rng() - 0.5);
+    for (const chatBot of shuffledBots) {
+      const role = secrets[chatBot.id]?.role ?? "aldeao";
+      const ctxBase = buildBotContext({
+        selfPlayerId: chatBot.id,
+        role,
+        roundNumber: round,
+        messageIndex: 0,
+        livingPlayers: livingRefs,
+        chatHistory,
+        publicLogThisDawn,
+        botoPlayerId,
+        iaraPlayerId,
+        padrePlayerId,
+        rng,
+      });
+      const messages = getBotMessagesForDayOpen(ctxBase, rng);
+      for (const text of messages) {
+        await roomRef.collection("chat").add({
+          playerId: chatBot.id,
+          name: chatBot.name,
+          text,
+          createdAt: FieldValue.serverTimestamp(),
+        });
+        chatHistory = [...chatHistory, { playerId: chatBot.id, name: chatBot.name, text }];
+      }
+    }
   }
   if (botIds.size > 0) {
     const aliveNow = Object.values(res.players).filter((p) => p.alive && !p.eliminated && !p.expelled);

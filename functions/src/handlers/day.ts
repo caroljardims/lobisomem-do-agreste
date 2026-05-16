@@ -1,9 +1,10 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import { db, loadPlayers } from "../helpers.js";
+import { db, loadPlayers, loadSecrets } from "../helpers.js";
 import { finalizeDay } from "../lib/finalize.js";
 import { canBeExpulsionVoteTarget, canSubmitExpulsionVote } from "../lib/playerVote.js";
 import { findPlayer, requireAuth } from "./shared.js";
+import { buildBotContext, getBotMessage } from "../lib/botChat/index.js";
 
 export const submitVote = onCall(async (req) => {
   requireAuth(req);
@@ -76,6 +77,62 @@ export const sendChatMessage = onCall(async (req) => {
     text,
     createdAt: FieldValue.serverTimestamp(),
   });
+
+  // Bot reativo: ~35% de chance de um bot responder ao humano
+  void (async () => {
+    try {
+      if (Math.random() > 0.35) return;
+      const allPlayers = await loadPlayers(code);
+      const secrets = await loadSecrets(code);
+      const liveBots = allPlayers.filter(
+        (p) => p.isBot && p.alive !== false && !p.eliminated && !p.expelled && !p.silenced,
+      );
+      if (liveBots.length === 0) return;
+      const bot = liveBots[Math.floor(Math.random() * liveBots.length)]!;
+      const role = secrets[bot.id]?.role ?? "aldeao";
+      const livingRefs = allPlayers
+        .filter((p) => p.alive !== false && !p.eliminated && !p.expelled)
+        .map((p) => ({
+          id: p.id,
+          name: String(p.name ?? p.id),
+          side: (secrets[p.id]?.side ?? "morador") as "criatura" | "morador" | "neutro",
+          isBot: Boolean(p.isBot),
+        }));
+      let chatHistory: Array<{ playerId: string; name: string; text: string }> = [];
+      try {
+        const snap = await roomRef.collection("chat").orderBy("createdAt", "desc").limit(30).get();
+        chatHistory = snap.docs.map((d) => {
+          const x = d.data() as Record<string, unknown>;
+          return { playerId: String(x.playerId ?? ""), name: String(x.name ?? ""), text: String(x.text ?? "") };
+        }).reverse();
+      } catch { /* sem histórico */ }
+      const round = Number(roomSnap.data()!.round ?? 1);
+      const botoId = allPlayers.find((p) => secrets[p.id]?.role === "boto")?.id ?? null;
+      const iaraId = allPlayers.find((p) => secrets[p.id]?.role === "iara")?.id ?? null;
+      const padreId = allPlayers.find((p) => secrets[p.id]?.role === "padre")?.id ?? null;
+      const ctx = buildBotContext({
+        selfPlayerId: bot.id,
+        role,
+        roundNumber: round,
+        messageIndex: 0,
+        livingPlayers: livingRefs,
+        chatHistory,
+        publicLogThisDawn: [],
+        botoPlayerId: botoId,
+        iaraPlayerId: iaraId,
+        padrePlayerId: padreId,
+        rng: Math.random,
+      });
+      const reply = getBotMessage(ctx, Math.random);
+      await roomRef.collection("chat").add({
+        playerId: bot.id,
+        name: bot.name,
+        text: reply,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+    } catch { /* reação do bot é best-effort */ }
+  })();
+
   return { ok: true };
 });
 
