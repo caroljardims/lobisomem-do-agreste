@@ -1,6 +1,6 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import { displayRoleName, validateNightAction } from "folclore-game-engine";
+import { displayRoleName, validateNightAction, isCreatureRole, geniConversedPlayerIds, normalizeGeniInvestigatedTargets } from "folclore-game-engine";
 import type { NightActionInput, RoleId } from "folclore-game-engine";
 import { db, loadPlayers, loadSecrets, startNightSequence } from "../helpers.js";
 import { maybeFinalizeNight } from "../lib/finalize.js";
@@ -49,10 +49,10 @@ export const submitNightAction = onCall(async (req) => {
 
   const privSnap = await roomRef.collection("playerPrivate").doc(me.id).get();
   const usedTargets = (privSnap.data()?.investigationTargetsUsed as string[]) ?? [];
-  const geniPrev = (room.geniInvestigatedTargets as string[]) ?? [];
+  const geniNorm = normalizeGeniInvestigatedTargets(room.geniInvestigatedTargets);
   const priorInvestigationTargetIds =
     mySecret.role === "geni" && action === "converse"
-      ? geniPrev
+      ? geniConversedPlayerIds(geniNorm)
       : mySecret.role === "cartomante" || mySecret.role === "boitata"
         ? usedTargets
         : [];
@@ -129,9 +129,13 @@ export const submitNightAction = onCall(async (req) => {
   }
 
   if (mySecret.role === "geni" && targetId && action === "converse" && !blockedThisNight) {
-    const prev = (room.geniInvestigatedTargets as string[]) ?? [];
-    if (!prev.includes(targetId)) {
-      await roomRef.update({ geniInvestigatedTargets: [...prev, targetId] });
+    const prevNorm = normalizeGeniInvestigatedTargets(room.geniInvestigatedTargets);
+    if (!geniConversedPlayerIds(prevNorm).includes(targetId)) {
+      const tr = secrets[targetId]?.role;
+      const result: "criatura" | "morador" = tr && isCreatureRole(tr) ? "criatura" : "morador";
+      await roomRef.update({
+        geniInvestigatedTargets: [...prevNorm, { playerId: targetId, round, result }],
+      });
     }
   }
 

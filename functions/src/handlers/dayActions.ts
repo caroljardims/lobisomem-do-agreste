@@ -4,13 +4,16 @@ import {
   checkCollectiveWinDetailed,
   collectiveWinChronicleMessagePt,
   displayRoleName,
+  geniKnowsTargetForDayTiro,
   isCreatureRole,
+  normalizeGeniInvestigatedTargets,
   type WinPlayerSnapshot,
 } from "folclore-game-engine";
 import type { RoleId } from "folclore-game-engine";
 import { db, loadPlayers, loadSecrets, ROLE_SIDE, startNightSequence } from "../helpers.js";
 import { processBotNightActions } from "../lib/bots.js";
-import { maybeFinalizeNight } from "../lib/finalize.js";
+import { finalizeDay, maybeFinalizeNight } from "../lib/finalize.js";
+import { beginSaciGorroOffer, runPostExpulsionTail } from "../lib/saciGorro.js";
 import { finalizeMvpLedgerIfNeeded } from "../lib/endGameScoring.js";
 import { grantAldeaoObjectiveIfMoradoresWon, grantObjectiveMvp } from "../lib/playerPrivateScore.js";
 import { findPlayer, requireAuth } from "./shared.js";
@@ -83,91 +86,170 @@ export const brasContinueChoice = onCall(async (req) => {
 export const coronelStartAccusation = onCall(async (req) => {
   requireAuth(req);
   const code = String(req.data?.roomCode ?? "").toUpperCase().trim();
-  const targetId = String(req.data?.targetId ?? "");
+  const targetId = String(req.data?.targetId ?? "").trim();
   const roomRef = db.collection("rooms").doc(code);
   const roomSnap = await roomRef.get();
   if (!roomSnap.exists) throw new HttpsError("not-found", "Sala não encontrada.");
-  if (roomSnap.data()!.status !== "day") throw new HttpsError("failed-precondition", "Só de dia.");
+  const room = roomSnap.data()!;
+  if (room.status !== "day") throw new HttpsError("failed-precondition", "Só de dia.");
+
+  const voteDayRound = Number(room.votesRound ?? room.round ?? 1);
 
   const [secrets, players] = await Promise.all([loadSecrets(code), loadPlayers(code)]);
   const me = findPlayer(players, req);
   if (!me || secrets[me.id]?.role !== "coronel") throw new HttpsError("permission-denied", "Apenas o Coronel.");
+  if (me.actionUsed) throw new HttpsError("failed-precondition", "Você já usou a acusação formal.");
+  if (!targetId) throw new HttpsError("invalid-argument", "Escolha um alvo.");
 
-  await roomRef.update({
-    daySubPhase: "coronel_accusation",
-    coronelAccusationTarget: targetId,
-    coronelVotesYes: {},
-  });
-  return { ok: true };
-});
+  const target = players.find((p) => p.id === targetId);
+  if (!target || target.alive === false || target.eliminated || target.expelled) {
+    throw new HttpsError("invalid-argument", "Alvo inválido.");
+  }
+  if (targetId === me.id) {
+    throw new HttpsError("invalid-argument", "Escolha outro jogador.");
+  }
 
-export const coronelAccusationVote = onCall(async (req) => {
-  requireAuth(req);
-  const code = String(req.data?.roomCode ?? "").toUpperCase().trim();
-  const yes = Boolean(req.data?.yes);
-  const roomRef = db.collection("rooms").doc(code);
-  const roomSnap = await roomRef.get();
-  const room = roomSnap.data()!;
-  if (room.daySubPhase !== "coronel_accusation") throw new HttpsError("failed-precondition", "Sem acusação ativa.");
+  const targetRole = secrets[targetId]?.role as RoleId | undefined;
+  const round = Number(room.round ?? 1);
+  const brasId = players.find((p) => secrets[p.id]?.role === "bras_cubas")?.id ?? null;
+  const coronelName = me.name ?? "Coronel";
+  const targetName = String(target.name ?? targetId);
 
-  const players = await loadPlayers(code);
-  const me = findPlayer(players, req);
-  if (!me) throw new HttpsError("permission-denied", "Fora da sala.");
-
-  const votes = { ...(room.coronelVotesYes as Record<string, boolean>) };
-  votes[me.id] = yes;
-  await roomRef.update({ coronelVotesYes: votes });
-
-  const alive = players.filter((p) => p.alive !== false && !p.eliminated && !p.expelled);
-  if (Object.keys(votes).length < alive.length) return { pending: true };
-
-  const yesCount = Object.values(votes).filter(Boolean).length;
-  const majority = yesCount * 2 > alive.length;
-  const secrets = await loadSecrets(code);
-  const targetId = String(room.coronelAccusationTarget ?? "");
-  const targetRole = secrets[targetId]?.role;
-
-  const coronelPlayer = players.find((p) => secrets[p.id]?.role === "coronel");
-
-  if (majority && targetRole === "boitata") {
-    const b = db.batch();
-    b.update(roomRef.collection("players").doc(targetId), { alive: false, eliminated: true });
-    if (coronelPlayer) {
-      b.update(roomRef.collection("players").doc(coronelPlayer.id), { individualObjectiveMet: true });
-    }
-    const round = Number(room.round ?? 1);
-    const roomPatch: Record<string, unknown> = { daySubPhase: "idle", coronelVotesYes: {} };
-    if (coronelPlayer) {
-      roomPatch.individualWins = FieldValue.arrayUnion({
-        playerId: coronelPlayer.id,
-        role: "coronel",
-        type: "coronel_acusacao_boitata",
-        round,
-        timestamp: Date.now(),
-      });
-    }
-    b.update(roomRef, roomPatch);
-    await b.commit();
-    if (coronelPlayer) {
-      await grantObjectiveMvp(code, coronelPlayer.id, round).catch(console.error);
-    }
-  } else if (majority) {
-    const coronelName = coronelPlayer?.name ?? "Coronel";
-    const logRef = roomRef.collection("publicLogEntries").doc();
-    const b2 = db.batch();
-    b2.update(roomRef, { daySubPhase: "idle", coronelVotesYes: {}, coronelRevealed: true });
-    b2.set(logRef, {
-      round: room.round ?? 1,
-      type: "special",
-      message: `O Coronel errou a acusação formal. ${coronelName} revela-se como Coronel.`,
+  /** Saci com Gorro ainda disponível: pausa como na expulsão por voto (não marca o Saci como expulso ainda). */
+  if (targetRole === "saci" && !target.actionUsed) {
+    const bSaci = db.batch();
+    bSaci.update(roomRef.collection("players").doc(me.id), { actionUsed: true });
+    bSaci.update(roomRef, {
+      daySubPhase: "idle",
+      coronelVotesYes: {},
+      coronelAccusationTarget: FieldValue.delete(),
+      voidedDayExpulsionRound: voteDayRound,
+    });
+    const voidVotesRef = roomRef.collection("publicLogEntries").doc();
+    bSaci.set(voidVotesRef, {
+      round,
+      type: "expulsion",
+      message:
+        "A praça até discutiu — mas os votos deste dia não valem: a acusação formal do Coronel já tinha decidido o rumo da cidade.",
       timestamp: Date.now(),
       createdAt: FieldValue.serverTimestamp(),
     });
-    await b2.commit();
-  } else {
-    await roomRef.update({ daySubPhase: "idle", coronelVotesYes: {} });
+    const accRef = roomRef.collection("publicLogEntries").doc();
+    bSaci.set(accRef, {
+      round,
+      type: "expulsion",
+      message: `O Coronel formal acusa ${targetName}. O Gorro Vermelho pode mudar o rumo da história.`,
+      timestamp: Date.now(),
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    await bSaci.commit();
+    await beginSaciGorroOffer(code, voteDayRound, targetId, players);
+    return { ok: true };
   }
-  return { resolved: true };
+
+  const winsToUnion: Array<{
+    playerId: string;
+    role: string;
+    type: string;
+    round: number;
+    timestamp: number;
+  }> = [];
+  if (targetRole === "boitata") {
+    winsToUnion.push({
+      playerId: me.id,
+      role: "coronel",
+      type: "coronel_acusacao_boitata",
+      round,
+      timestamp: Date.now(),
+    });
+  }
+
+  const mulaPlayer = players.find((p) => secrets[p.id]?.role === "mula");
+  if (targetRole === "padre" && mulaPlayer && !mulaPlayer.individualObjectiveMet) {
+    winsToUnion.push({
+      playerId: mulaPlayer.id,
+      role: "mula",
+      type: "mula_padre",
+      round,
+      timestamp: Date.now(),
+    });
+  }
+
+  const b = db.batch();
+  b.update(roomRef.collection("players").doc(targetId), { alive: false, expelled: true });
+
+  const coronelUp: Record<string, unknown> = { actionUsed: true };
+  if (targetRole === "boitata") {
+    coronelUp.individualObjectiveMet = true;
+  }
+  b.update(roomRef.collection("players").doc(me.id), coronelUp);
+
+  if (targetRole === "padre" && mulaPlayer && !mulaPlayer.individualObjectiveMet) {
+    b.update(roomRef.collection("players").doc(mulaPlayer.id), { individualObjectiveMet: true });
+  }
+
+  const roomUp: Record<string, unknown> = {
+    daySubPhase: "idle",
+    coronelVotesYes: {},
+    coronelAccusationTarget: FieldValue.delete(),
+    voidedDayExpulsionRound: voteDayRound,
+  };
+  if (targetRole !== "boitata") {
+    roomUp.coronelRevealed = true;
+  }
+  if (targetRole === "bras_cubas") {
+    roomUp.pendingBrasChoice = true;
+  }
+  if (winsToUnion.length > 0) {
+    roomUp.individualWins = FieldValue.arrayUnion(...winsToUnion);
+  }
+  b.update(roomRef, roomUp);
+
+  if (targetRole === "bras_cubas") {
+    b.set(roomRef.collection("publicLogEntries").doc(), {
+      round,
+      type: "special",
+      message: `Espera. ${targetName} sorri. Era o Tolo — e ser expulso era exatamente o que queria.`,
+      timestamp: Date.now(),
+      createdAt: FieldValue.serverTimestamp(),
+    });
+  } else {
+    const roleLabel = targetRole ? displayRoleName(targetRole) : "?";
+    let expulsionMsg = `A acusação formal expulsou ${targetName}. Era ${roleLabel}.`;
+    if (targetRole !== "boitata") {
+      expulsionMsg += ` ${coronelName} revela-se como Coronel — a praça viu de quem partiu a ordem.`;
+    }
+    b.set(roomRef.collection("publicLogEntries").doc(), {
+      round,
+      type: "expulsion",
+      message: expulsionMsg,
+      timestamp: Date.now(),
+      createdAt: FieldValue.serverTimestamp(),
+    });
+  }
+
+  await b.commit();
+
+  if (targetRole === "boitata") {
+    await grantObjectiveMvp(code, me.id, round).catch(console.error);
+  }
+
+  await finalizeDay(code, voteDayRound);
+
+  const voteSnap = await roomRef.collection("votes").doc(String(voteDayRound)).get();
+  const votesRaw = voteSnap.data() ?? {};
+  const voteRecord: Record<string, string | null | undefined> = {};
+  for (const [k, v] of Object.entries(votesRaw)) {
+    if (k === "updatedAt") continue;
+    voteRecord[k] = v == null || v === "" ? null : String(v);
+  }
+  await runPostExpulsionTail(code, voteDayRound, targetId, voteRecord, brasId);
+  return { ok: true };
+});
+
+/** Removido: a cidade não vota mais sim/não na acusação formal — só o Coronel decide em `coronelStartAccusation`. */
+export const coronelAccusationVote = onCall(async (_req) => {
+  throw new HttpsError("failed-precondition", "A votação da acusação formal foi encerrada. A acusação é só do Coronel.");
 });
 
 export const cangaceiroTiroCerto = onCall(async (req) => {
@@ -198,9 +280,9 @@ export const cangaceiroTiroCerto = onCall(async (req) => {
     throw new HttpsError("invalid-argument", "Alvo inválido.");
   }
 
-  const history = (room.geniInvestigatedTargets as string[]) ?? [];
+  const history = normalizeGeniInvestigatedTargets(room.geniInvestigatedTargets);
   const geniPid = players.find((p) => secrets[p.id]?.role === "geni")?.id;
-  const consulted = Boolean(geniPid && history.includes(targetIdRaw));
+  const consulted = Boolean(geniPid && geniKnowsTargetForDayTiro(history, targetIdRaw, round));
   const targetRole = secrets[targetIdRaw]?.role;
   if (!targetRole) throw new HttpsError("invalid-argument", "Alvo inválido.");
 

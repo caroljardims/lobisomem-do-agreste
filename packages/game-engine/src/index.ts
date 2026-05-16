@@ -4,6 +4,8 @@ export * from "./rolePools.js";
 export * from "./nightOrder.js";
 export * from "./nightValidation.js";
 export * from "./dawnResolver.js";
+export * from "./dawnTargetExperience.js";
+export * from "./geniInvestigationHistory.js";
 export * from "./voteTally.js";
 export * from "./winConditions.js";
 export * from "./copy.js";

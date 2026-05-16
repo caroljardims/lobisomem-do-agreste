@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { resolveDawn } from "./dawnResolver.js";
-import type { PlayerDawnState } from "./types.js";
+import type { GeniInvestigationRecord, PlayerDawnState } from "./types.js";
 import { ROLE_SIDE } from "./roles.js";
 
 function basePlayer(
@@ -145,7 +145,7 @@ describe("resolveDawn", () => {
       geniInvestigatedIds: {},
     });
     expect(res.publicLog.some((e) => e.type === "bite")).toBe(true);
-    expect(res.privateLog.a?.[0]?.message).toContain("mordido");
+    expect(res.privateLog.a?.[0]?.message).toContain("Você foi mordido esta noite");
   });
 
   it("Geni Charme de Verdade protege alvo do Lobisomem", () => {
@@ -167,12 +167,16 @@ describe("resolveDawn", () => {
     expect(res.publicLog.some((e) => e.type === "death")).toBe(false);
   });
 
-  it("Romance da Caatinga: Geni em converse no Cangaceiro envia histórico completo ao Cangaceiro", () => {
+  it("Romance da Caatinga: só investigações de rodadas anteriores entram no texto ao Cangaceiro", () => {
     const geni = basePlayer("g", "Geni", "geni");
     const cang = basePlayer("c", "Zé", "cangaceiro");
     const aldeao = basePlayer("a", "Ana", "aldeao");
     const wolf = basePlayer("w", "Lobo", "lobisomem");
     const players = { g: geni, c: cang, a: aldeao, w: wolf };
+    const prior: GeniInvestigationRecord[] = [
+      { playerId: "a", round: 1, result: "morador" },
+      { playerId: "w", round: 1, result: "criatura" },
+    ];
     const res = resolveDawn({
       round: 2,
       now: 1,
@@ -180,13 +184,13 @@ describe("resolveDawn", () => {
       nightActions: {
         g: { role: "geni", action: "converse", targetId: "c", specialAction: null },
       },
-      geniInvestigatedIds: { g: ["a", "w", "c"] },
+      geniInvestigatedIds: { g: prior },
     });
     const romance = res.privateLog.c?.find((e) => e.message.includes("passou a noite com você"));
     expect(romance?.message).toContain("Geni passou a noite com você");
     expect(romance?.message).toContain("Ana (morador)");
     expect(romance?.message).toContain("Lobo (criatura)");
-    expect(romance?.message).toContain("Zé (morador)");
+    expect(romance?.message).not.toContain("Zé (morador)");
   });
 
   it("Romance da Caatinga não dispara com charm no Cangaceiro", () => {
@@ -200,7 +204,7 @@ describe("resolveDawn", () => {
       nightActions: {
         g: { role: "geni", action: "charm", targetId: "c", specialAction: null },
       },
-      geniInvestigatedIds: { g: ["a"] },
+      geniInvestigatedIds: { g: [{ playerId: "a", round: 1, result: "morador" }] },
     });
     expect(res.privateLog.c?.some((e) => e.message.includes("passou a noite com você"))).toBeFalsy();
   });
@@ -217,7 +221,7 @@ describe("resolveDawn", () => {
       nightActions: {
         g: { role: "geni", action: "converse", targetId: "a", specialAction: null },
       },
-      geniInvestigatedIds: { g: ["a"] },
+      geniInvestigatedIds: { g: [{ playerId: "a", round: 1, result: "morador" }] },
     });
     expect(res.privateLog.c?.some((e) => e.message.includes("passou a noite com você"))).toBeFalsy();
   });
@@ -238,7 +242,7 @@ describe("resolveDawn", () => {
     expect(res.players.g.blockedNextNight).toBe(false);
   });
 
-  it("Cangaceiro query sem investigação da Geni bloqueia Geni na próxima noite", () => {
+  it("Cangaceiro query sem investigação da Geni: aviso, sem bloquear Geni", () => {
     const geni = basePlayer("g", "Geni", "geni");
     const cang = basePlayer("c", "Zé", "cangaceiro");
     const aldeao = basePlayer("a", "Ana", "aldeao");
@@ -252,8 +256,80 @@ describe("resolveDawn", () => {
       },
       geniInvestigatedIds: { g: [] },
     });
-    expect(res.players.g.blockedNextNight).toBe(true);
-    expect(res.players.g.nightAbilityBlockSource).toBe("cangaceiro");
+    expect(res.players.g.blockedNextNight).toBe(false);
+    expect(res.players.g.nightAbilityBlockSource).toBeNull();
+    expect(
+      res.privateLog.c?.some((e) =>
+        e.message.includes("Geni ainda não conversou com Ana. Tente de novo quando ela souber mais."),
+      ),
+    ).toBe(true);
+  });
+
+  it("Cangaceiro consulta alvo que Geni só investigou na mesma rodada: não revela alinhamento, sem penalidade", () => {
+    const geni = basePlayer("g", "Geni", "geni");
+    const cang = basePlayer("c", "Zé", "cangaceiro");
+    const aldeao = basePlayer("a", "Ana", "aldeao");
+    const players = { g: geni, c: cang, a: aldeao };
+    const res = resolveDawn({
+      round: 3,
+      now: 1,
+      players,
+      nightActions: {
+        c: { role: "cangaceiro", action: "query", targetId: "a", specialAction: null },
+      },
+      geniInvestigatedIds: { g: [{ playerId: "a", round: 3, result: "morador" }] },
+    });
+    expect(res.privateLog.c?.some((e) => e.message.startsWith("Geni já conversou com"))).toBe(false);
+    expect(
+      res.privateLog.c?.some((e) =>
+        e.message.includes("Geni ainda não conversou com Ana. Tente de novo quando ela souber mais."),
+      ),
+    ).toBe(true);
+    expect(res.players.g.blockedNextNight).toBe(false);
+    expect(res.players.g.nightAbilityBlockSource).toBeNull();
+  });
+
+  it("Cangaceiro consulta alvo que Geni investigou na rodada anterior: revela, sem bloqueio", () => {
+    const geni = basePlayer("g", "Geni", "geni");
+    const cang = basePlayer("c", "Zé", "cangaceiro");
+    const aldeao = basePlayer("a", "Ana", "aldeao");
+    const players = { g: geni, c: cang, a: aldeao };
+    const res = resolveDawn({
+      round: 3,
+      now: 1,
+      players,
+      nightActions: {
+        c: { role: "cangaceiro", action: "query", targetId: "a", specialAction: null },
+      },
+      geniInvestigatedIds: { g: [{ playerId: "a", round: 2, result: "morador" }] },
+    });
+    expect(
+      res.privateLog.c?.some((e) =>
+        e.message.includes("Geni já conversou com Ana. É morador."),
+      ),
+    ).toBe(true);
+    expect(res.players.g.blockedNextNight).toBe(false);
+  });
+
+  it("Cangaceiro consulta neutro que Geni já tinha conversado: mensagem com neutro", () => {
+    const geni = basePlayer("g", "Geni", "geni");
+    const cang = basePlayer("c", "Zé", "cangaceiro");
+    const cur = basePlayer("u", "Ursula", "curupira");
+    const players = { g: geni, c: cang, u: cur };
+    const res = resolveDawn({
+      round: 2,
+      now: 1,
+      players,
+      nightActions: {
+        c: { role: "cangaceiro", action: "query", targetId: "u", specialAction: null },
+      },
+      geniInvestigatedIds: { g: [{ playerId: "u", round: 1, result: "morador" }] },
+    });
+    expect(
+      res.privateLog.c?.some((e) =>
+        e.message.includes("Geni já conversou com Ursula. É neutro."),
+      ),
+    ).toBe(true);
   });
 
   it("Delegado com roubo do Saci na noite anterior não aplica prisão e recebe aviso privado", () => {

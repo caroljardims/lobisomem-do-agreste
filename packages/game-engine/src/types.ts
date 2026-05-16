@@ -50,6 +50,15 @@ export interface PrivateLogEntry {
   timestamp: number;
 }
 
+/** Histórico de conversas da Geni (Firestore + entrada do resolveDawn). */
+export interface GeniInvestigationRecord {
+  playerId: string;
+  /** Rodada em que a conversa ocorreu (mesmo índice que `room.round` na noite). */
+  round: number;
+  /** Rótulo morador/criatura na época da conversa (neutros como morador no copy). */
+  result: "criatura" | "morador";
+}
+
 export interface PlayerDawnState {
   /** Igual à chave em `players` (Firestore). */
   id: string;
@@ -60,8 +69,8 @@ export interface PlayerDawnState {
   eliminated: boolean;
   expelled: boolean;
   blockedNextNight: boolean;
-  /** Quem impôs o bloqueio na próxima noite (persistido com `blockedNextNight`). */
-  nightAbilityBlockSource?: "saci" | "cangaceiro" | null;
+  /** Quem impôs o bloqueio na próxima noite (persistido com `blockedNextNight`). Só o Saci usa hoje. */
+  nightAbilityBlockSource?: "saci" | null;
   silenced: boolean;
   silencedRounds: number;
   enchanted: boolean;
@@ -90,8 +99,8 @@ export interface DawnResolveInput {
   now: number;
   players: Record<string, PlayerDawnState>;
   nightActions: Record<string, NightActionInput | undefined>;
-  /** Por `playerId` da Geni: alvos que ela já conversou (Cangaceiro / Tiro Certo). */
-  geniInvestigatedIds: Record<string, string[]>;
+  /** Por `playerId` da Geni: conversas acumuladas (com rodada) para Cangaceiro / Romance no amanhecer. */
+  geniInvestigatedIds: Record<string, GeniInvestigationRecord[]>;
 }
 
 export interface DawnResolveResult {

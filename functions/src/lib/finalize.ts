@@ -1,11 +1,14 @@
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
-import type { NightActionInput, PlayerDawnState, WinPlayerSnapshot } from "folclore-game-engine";
+import type { GeniInvestigationRecord, NightActionInput, PlayerDawnState, WinPlayerSnapshot } from "folclore-game-engine";
 import {
   resolveDawn,
   DAY_OPENING,
+  DAY_PRIMER_ENCHANTED,
+  DAY_PRIMER_SEDUCED,
   tallyExpulsionVotes,
   checkCollectiveWinDetailed,
   collectiveWinChronicleMessagePt,
+  normalizeGeniInvestigatedTargets,
 } from "folclore-game-engine";
 import type { RoleId } from "folclore-game-engine";
 import { db } from "./db.js";
@@ -138,14 +141,19 @@ export async function tryEndGameCollective(
   roomData: Record<string, unknown>,
 ): Promise<boolean> {
   const roomRef = db.collection("rooms").doc(roomCode);
-  const maxR = Number(roomData.maxRounds ?? 7);
+  const roomSnap = await roomRef.get();
+  const rs = roomSnap.data() ?? {};
+  if (rs.status === "ended") return false;
+
+  const merged: Record<string, unknown> = { ...roomData, ...rs };
+  const maxR = Number(merged.maxRounds ?? 7);
   const [snaps, sec] = await Promise.all([loadPlayers(roomCode), loadSecrets(roomCode)]);
   const winPlayers = buildWinPlayerSnapshots(snaps, sec);
-  const tpc = Number(roomData.gameTablePlayerCount ?? 0) || snaps.length;
+  const tpc = Number(merged.gameTablePlayerCount ?? 0) || snaps.length;
   let checkRound = round;
   if (
-    roomData.debug === true &&
-    (roomData.debugForceMoonPhase as string | undefined) === "full"
+    merged.debug === true &&
+    (merged.debugForceMoonPhase as string | undefined) === "full"
   ) {
     checkRound = Math.max(round, maxR + 1);
   }
@@ -216,7 +224,7 @@ export async function finalizeNight(roomCode: string, round: number) {
   const roomSnap = await roomRef.get();
   const room = roomSnap.data() ?? {};
   if (room.status !== "night") return;
-  const geniHistory = (room.geniInvestigatedTargets as string[] | undefined) ?? [];
+  const geniHistory = normalizeGeniInvestigatedTargets(room.geniInvestigatedTargets);
 
   const [players, secrets, nightSnap] = await Promise.all([
     loadPlayers(roomCode),
@@ -231,7 +239,7 @@ export async function finalizeNight(roomCode: string, round: number) {
   }
 
   const geniPid = players.find((p) => secrets[p.id]?.role === "geni")?.id;
-  const geniInvestigatedIds: Record<string, string[]> = {};
+  const geniInvestigatedIds: Record<string, GeniInvestigationRecord[]> = {};
   if (geniPid) geniInvestigatedIds[geniPid] = [...geniHistory];
 
   const dawnPlayers: Record<string, PlayerDawnState> = {};
@@ -247,12 +255,7 @@ export async function finalizeNight(roomCode: string, round: number) {
       eliminated: Boolean(p.eliminated),
       expelled: Boolean(p.expelled),
       blockedNextNight: Boolean(p.blockedNextNight),
-      nightAbilityBlockSource:
-        p.nightAbilityBlockSource === "cangaceiro"
-          ? "cangaceiro"
-          : p.nightAbilityBlockSource === "saci"
-            ? "saci"
-            : null,
+      nightAbilityBlockSource: p.nightAbilityBlockSource === "saci" ? "saci" : null,
       silenced: Boolean(p.silenced),
       silencedRounds: Number(p.silencedRounds ?? 0),
       enchanted: Boolean(p.enchanted),
@@ -319,6 +322,30 @@ export async function finalizeNight(roomCode: string, round: number) {
     for (const e of entries) {
       const ref = roomRef.collection("privateLog").doc(pid).collection("entries").doc();
       batch.set(ref, { ...e, createdAt: FieldValue.serverTimestamp() });
+    }
+  }
+
+  for (const pid of Object.keys(res.players)) {
+    const before = dawnPlayers[pid];
+    const after = res.players[pid];
+    if (!before || !after || after.alive === false || after.eliminated || after.expelled) continue;
+    if (!before.enchanted && after.enchanted) {
+      const ref = roomRef.collection("privateLog").doc(pid).collection("entries").doc();
+      batch.set(ref, {
+        round,
+        message: DAY_PRIMER_ENCHANTED,
+        timestamp: now,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+    }
+    if (!before.seduced && after.seduced) {
+      const ref = roomRef.collection("privateLog").doc(pid).collection("entries").doc();
+      batch.set(ref, {
+        round,
+        message: DAY_PRIMER_SEDUCED,
+        timestamp: now,
+        createdAt: FieldValue.serverTimestamp(),
+      });
     }
   }
 
@@ -592,6 +619,34 @@ export async function finalizeDay(roomCode: string, round: number) {
       await grantAldeaoObjectiveIfMoradoresWon(roomCode, round, forcedWinner, players, secrets).catch(console.error);
     }
     await finalizeMvpLedgerIfNeeded(roomCode).catch(console.error);
+    return;
+  }
+
+  const voteRound = Number(room.votesRound ?? room.round ?? 1);
+  if (Number(room.voidedDayExpulsionRound) === voteRound) {
+    const voidBatch = db.batch();
+    voidBatch.update(roomRef, { votingOpen: false });
+    voidBatch.set(roomRef.collection("publicLogEntries").doc(), {
+      round: voteRound,
+      type: "expulsion",
+      message:
+        "A praça até discutiu — mas os votos deste dia não valem: a acusação formal do Coronel já tinha decidido o rumo da cidade.",
+      timestamp: Date.now(),
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    await voidBatch.commit();
+    if (await tryEndGameCollective(roomCode, voteRound, room)) {
+      return;
+    }
+    const roomAfterVoid = (await roomRef.get()).data() ?? {};
+    const gorroPending =
+      roomAfterVoid.pendingSaciGorro != null &&
+      typeof roomAfterVoid.pendingSaciGorro === "object" &&
+      "saciPlayerId" in (roomAfterVoid.pendingSaciGorro as object);
+    if (!roomAfterVoid.pendingBrasChoice && !gorroPending) {
+      const nextRound = voteRound + 1;
+      await roomRef.update({ pendingNightStart: true, pendingNightRound: nextRound });
+    }
     return;
   }
 

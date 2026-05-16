@@ -1,4 +1,8 @@
-import type { RoleId } from "folclore-game-engine";
+import {
+  geniConversedPlayerIds,
+  normalizeGeniInvestigatedTargets,
+  type RoleId,
+} from "folclore-game-engine";
 import {
   lazy,
   Suspense,
@@ -14,7 +18,6 @@ import { useAuth } from "./context/AuthContext.js";
 import { auth, call } from "./firebase.js";
 import {
   canShowCangaceiroTiro,
-  canShowCoronelAccusationVotes,
   canShowCoronelAccuse,
   hasPendingSaciGorro,
 } from "./dayActions.js";
@@ -84,6 +87,8 @@ export function App() {
   const [nightSpecialAction, setNightSpecialAction] = useState<string | null>(null);
   const [nightActionSent, setNightActionSent] = useState(false);
   const [dayActionSent, setDayActionSent] = useState<string | null>(null);
+  /** Coronel: primeiro clique arma acusação formal (desabilita voto); segundo confirma. */
+  const [coronelAccusationArmed, setCoronelAccusationArmed] = useState(false);
   const [loreOpen, setLoreOpen] = useState(false);
   const [brasChosenRole, setBrasChosenRole] = useState("aldeao");
   const [cangConsultTarget, setCangConsultTarget] = useState("");
@@ -457,6 +462,7 @@ export function App() {
     setNightSpecialAction(null);
     setNightActionSent(false);
     setDayActionSent(null);
+    setCoronelAccusationArmed(false);
     setCangConsultTarget("");
     setTiroCertoTarget("");
     setTiroPreview(null);
@@ -1216,7 +1222,9 @@ export function App() {
               !meNight?.eliminated &&
               !meNight?.expelled;
             const usedTargets = new Set(myPrivate?.investigationTargetsUsed ?? []);
-            const geniKnown = new Set(room.geniInvestigatedTargets ?? []);
+            const geniKnown = new Set(
+              geniConversedPlayerIds(normalizeGeniInvestigatedTargets(room.geniInvestigatedTargets)),
+            );
             const blockInvestigation =
               myRole === "geni"
                 ? geniKnown
@@ -1420,11 +1428,18 @@ export function App() {
                       myRole === "boitata" ||
                       myRole === "geni") &&
                       (myPrivate?.investigationTargetsUsed?.length ||
-                        (myRole === "geni" && (room.geniInvestigatedTargets?.length ?? 0) > 0)) && (
+                        (myRole === "geni" &&
+                          geniConversedPlayerIds(
+                            normalizeGeniInvestigatedTargets(room.geniInvestigatedTargets),
+                          ).length > 0)) && (
                       <p className="muted" style={{ fontSize: "0.85rem" }}>
                         Alvos já usados em investigação/prisão/conversa (não podem repetir):{" "}
-                        {(myRole === "geni" ? room.geniInvestigatedTargets : myPrivate?.investigationTargetsUsed)
-                          ?.map((id: string) => players.find((x) => x.id === id)?.name ?? id)
+                        {(myRole === "geni"
+                          ? geniConversedPlayerIds(
+                              normalizeGeniInvestigatedTargets(room.geniInvestigatedTargets),
+                            )
+                          : myPrivate?.investigationTargetsUsed
+                        )?.map((id: string) => players.find((x) => x.id === id)?.name ?? id)
                           .join(", ")}
                       </p>
                     )}
@@ -1487,10 +1502,22 @@ export function App() {
           {room.status === "day" && (() => {
             const myPlayer = players.find((p) => p.id === playerId);
             const currentRound = room.round ?? 1;
-            const nightTypes = ["death", "bite", "terror", "invocation", "dawn", "special"];
-            const dawnEntries = publicLog.filter(
-              (e) => e.round === currentRound && nightTypes.includes(e.type ?? ""),
-            );
+            const isNightPublicSpecial = (e: { message?: string }) => {
+              const m = String(e.message ?? "");
+              return m.startsWith("Alinhamento (1ª noite):") || m.includes("Mesa de cinco: por regra do cordel");
+            };
+            const dawnEntries = publicLog.filter((e) => {
+              if (e.round !== currentRound) return false;
+              const t = e.type ?? "";
+              if (["death", "bite", "terror", "invocation", "dawn"].includes(t)) return true;
+              return t === "special" && isNightPublicSpecial(e);
+            });
+            const dayFolhetimOutcomes = publicLog.filter((e) => {
+              if (e.round !== currentRound) return false;
+              const t = e.type ?? "";
+              if (t === "expulsion") return true;
+              return t === "special" && !isNightPublicSpecial(e);
+            });
             const hasDeathOrElimination = dawnEntries.some((e) => e.type === "death");
             const outOfGame = players.filter((p) => p.alive === false || p.eliminated || p.expelled);
             const canVote = !!(myPlayer && canSubmitExpulsionVote(myPlayer));
@@ -1518,10 +1545,9 @@ export function App() {
                   {!hasDeathOrElimination && (
                     <p className="muted">Ninguém foi eliminado esta noite.</p>
                   )}
-                  {publicLog
-                    .filter((e) => e.type === "expulsion" && e.round === currentRound)
-                    .map((e) => <p key={e.id}>{e.message}</p>)
-                  }
+                  {dayFolhetimOutcomes.map((e) => (
+                    <p key={e.id}>{e.message}</p>
+                  ))}
                   {privateLog.map((e) => (
                     <p key={e.id} className="private-log-entry">🔒 {e.message}</p>
                   ))}
@@ -1587,14 +1613,15 @@ export function App() {
                     </div>
                   );
                 })()}
-                {!canVote ? (
+                {room.votingOpen === true &&
+                  (!canVote ? (
                   <p className="muted day-section">Você não tem direito a voto nesta rodada.</p>
                 ) : (
                   <div className="day-section vote-block">
                     <label>Seu voto - vote para expulsar um suspeito</label>
                     <select
                       value={voteSelectValue}
-                      disabled={hasVoted || anyPending}
+                      disabled={hasVoted || anyPending || (myRole === "coronel" && coronelAccusationArmed)}
                       onChange={(e) => setVoteTarget(e.target.value)}
                     >
                       <option value="">Nulo</option>
@@ -1606,23 +1633,89 @@ export function App() {
                           </option>
                         ))}
                     </select>
-                    <button
-                      type="button"
-                      className={hasVoted ? "vote-sent" : undefined}
-                      disabled={hasVoted || anyPending}
-                      onClick={() =>
-                        void run("submitVote", { roomCode, targetId: resolvedVoteTarget || null }, "vote").catch(
-                          () => {},
-                        )
-                      }
+                    <div
+                      className="row vote-control-row"
+                      style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginTop: 8 }}
                     >
-                      <span className="btn-with-spinner">
-                        {busy("vote") ? "enviando…" : hasVoted ? "✓ Voto enviado" : "Votar"}
-                        <BtnSpinner show={busy("vote")} />
-                      </span>
-                    </button>
+                      <button
+                        type="button"
+                        className={hasVoted ? "vote-sent" : undefined}
+                        disabled={
+                          hasVoted ||
+                          anyPending ||
+                          (myRole === "coronel" && coronelAccusationArmed)
+                        }
+                        onClick={() =>
+                          void run("submitVote", { roomCode, targetId: resolvedVoteTarget || null }, "vote").catch(
+                            () => {},
+                          )
+                        }
+                      >
+                        <span className="btn-with-spinner">
+                          {busy("vote") ? "enviando…" : hasVoted ? "✓ Voto enviado" : "Votar"}
+                          <BtnSpinner show={busy("vote")} />
+                        </span>
+                      </button>
+                      {canShowCoronelAccuse(myRole, room, myPlayer) && (
+                        <>
+                          <button
+                            type="button"
+                            disabled={
+                              anyPending ||
+                              dayActionSent === "coronel" ||
+                              (coronelAccusationArmed && !resolvedVoteTarget)
+                            }
+                            className={
+                              dayActionSent === "coronel"
+                                ? "vote-sent"
+                                : coronelAccusationArmed
+                                  ? "primary-btn"
+                                  : undefined
+                            }
+                            onClick={() => {
+                              if (dayActionSent === "coronel") return;
+                              if (!coronelAccusationArmed) {
+                                setCoronelAccusationArmed(true);
+                                return;
+                              }
+                              void run(
+                                "coronelStartAccusation",
+                                { roomCode, targetId: resolvedVoteTarget },
+                                "coronelAccuse",
+                              )
+                                .then(() => {
+                                  setDayActionSent("coronel");
+                                  setCoronelAccusationArmed(false);
+                                })
+                                .catch(() => {});
+                            }}
+                          >
+                            <span className="btn-with-spinner">
+                              {busy("coronelAccuse")
+                                ? "enviando…"
+                                : dayActionSent === "coronel"
+                                  ? "✓ Acusação enviada"
+                                  : coronelAccusationArmed
+                                    ? "Confirmar acusação formal"
+                                    : "Acusação formal"}
+                              <BtnSpinner show={busy("coronelAccuse")} />
+                            </span>
+                          </button>
+                          {coronelAccusationArmed && dayActionSent !== "coronel" && (
+                            <button
+                              type="button"
+                              className="chip-btn"
+                              disabled={anyPending}
+                              onClick={() => setCoronelAccusationArmed(false)}
+                            >
+                              Cancelar
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
                   </div>
-                )}
+                ))}
                 {isHost && room.votingOpen && (
                   <div className="day-section vote-block">
                     <button
@@ -1653,70 +1746,6 @@ export function App() {
                       <span className="btn-with-spinner" style={{ width: "100%" }}>
                         {busy("startNight") ? "recolhendo…" : "Toque de recolher"}
                         <BtnSpinner show={busy("startNight")} />
-                      </span>
-                    </button>
-                  </div>
-                )}
-                {canShowCoronelAccuse(myRole, room, myPlayer) && (
-                  <div className="row day-actions-row day-section">
-                    <button
-                      type="button"
-                      disabled={!resolvedVoteTarget || anyPending || dayActionSent === "coronel"}
-                      className={dayActionSent === "coronel" ? "vote-sent" : undefined}
-                      onClick={() =>
-                        void run(
-                          "coronelStartAccusation",
-                          {
-                            roomCode,
-                            targetId: resolvedVoteTarget,
-                          },
-                          "coronelAccuse",
-                        )
-                          .then(() => setDayActionSent("coronel"))
-                          .catch(() => {})
-                      }
-                    >
-                      <span className="btn-with-spinner">
-                        {busy("coronelAccuse")
-                          ? "enviando…"
-                          : dayActionSent === "coronel"
-                            ? "✓ Acusação iniciada"
-                            : "Coronel: acusação formal"}
-                        <BtnSpinner show={busy("coronelAccuse")} />
-                      </span>
-                    </button>
-                  </div>
-                )}
-                {canShowCoronelAccusationVotes(room, myPlayer) && (
-                  <div className="row day-actions-row day-section">
-                    <span className="muted day-actions-label">Votação da acusação formal</span>
-                    <button
-                      type="button"
-                      disabled={anyPending || dayActionSent === "coronel_vote"}
-                      className={dayActionSent === "coronel_vote" ? "vote-sent" : undefined}
-                      onClick={() =>
-                        void run("coronelAccusationVote", { roomCode, yes: true }, "coronelVoteYes")
-                          .then(() => setDayActionSent("coronel_vote"))
-                          .catch(() => {})
-                      }
-                    >
-                      <span className="btn-with-spinner">
-                        {busy("coronelVoteYes") ? "enviando…" : dayActionSent === "coronel_vote" ? "✓ Votado" : "Voto sim"}
-                        <BtnSpinner show={busy("coronelVoteYes")} />
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      disabled={anyPending || dayActionSent === "coronel_vote"}
-                      onClick={() =>
-                        void run("coronelAccusationVote", { roomCode, yes: false }, "coronelVoteNo")
-                          .then(() => setDayActionSent("coronel_vote"))
-                          .catch(() => {})
-                      }
-                    >
-                      <span className="btn-with-spinner">
-                        {busy("coronelVoteNo") ? "enviando…" : "Voto não"}
-                        <BtnSpinner show={busy("coronelVoteNo")} />
                       </span>
                     </button>
                   </div>

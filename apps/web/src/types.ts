@@ -1,4 +1,5 @@
 import type { DocumentData } from "firebase/firestore";
+import type { GeniInvestigationRecord } from "folclore-game-engine";
 import type { ReactNode } from "react";
 
 export type LoreSection =
@@ -35,6 +36,8 @@ export type RoomDoc = DocumentData & {
     round?: number;
   } | null;
   coronelAccusationTarget?: string;
+  /** Dia em que a expulsão por votação foi anulada após acusação formal do Coronel (`votesRound` daquele dia). */
+  voidedDayExpulsionRound?: number;
   revealedRoles?: Record<string, string>;
   /** Vitórias individuais (não encerram a partida sozinhas); ver `individualWinChronicleLine`. */
   individualWins?: Array<{
@@ -46,7 +49,8 @@ export type RoomDoc = DocumentData & {
   }>;
   lastGameHistoryId?: string;
   mvpLedgerApplied?: boolean;
-  geniInvestigatedTargets?: string[];
+  /** Conversas da Geni: legado `string[]` ou `{ playerId, round, result }[]`. */
+  geniInvestigatedTargets?: (string | GeniInvestigationRecord)[];
   /** Congelado em `startGame` (jogadores conectados ao iniciar). */
   gameTablePlayerCount?: number;
   /** Sala criada via modo debug (localhost). Exclui MVP / histórico público. */

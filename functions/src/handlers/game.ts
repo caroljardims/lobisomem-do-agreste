@@ -403,6 +403,7 @@ export const restartGame = onCall(async (req) => {
     gameTablePlayerCount: FieldValue.delete(),
     collectiveEndKind: FieldValue.delete(),
     fiveTableMoradorIds: FieldValue.delete(),
+    voidedDayExpulsionRound: FieldValue.delete(),
   });
 
   await batch.commit();

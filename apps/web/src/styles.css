@@ -1312,6 +1312,12 @@ input::placeholder {
   margin: 3px 0 !important;
 }
 
+.chronicle-votes-voided {
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  opacity: 0.72;
+}
+
 .chronicle-role {
   font-size: 11px;
   color: var(--gold);

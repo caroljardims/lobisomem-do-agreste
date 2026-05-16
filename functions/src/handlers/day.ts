@@ -15,6 +15,14 @@ export const submitVote = onCall(async (req) => {
   const room = roomSnap.data()!;
   if (room.status !== "day") throw new HttpsError("failed-precondition", "Não é fase do dia.");
 
+  const voteRound = Number(room.votesRound ?? room.round ?? 1);
+  if (Number(room.voidedDayExpulsionRound) === voteRound) {
+    throw new HttpsError(
+      "failed-precondition",
+      "Os votos de expulsão deste dia não valem — a acusação formal do Coronel já foi usada.",
+    );
+  }
+
   const players = await loadPlayers(code);
   const me = findPlayer(players, req);
   if (!me) throw new HttpsError("permission-denied", "Jogador não encontrado.");

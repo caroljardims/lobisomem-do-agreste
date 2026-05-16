@@ -454,12 +454,12 @@ export const ROLE_LORE: Record<string, string | LoreRich> = {
             <p style={{ margin: "0 0 10px" }}>Antes de disparar, o Cangaceiro pode consultar o sistema sobre um alvo:</p>
             <ul className="lore-card__fact-list">
               <li>
-                Se a Geni <strong>já investigou</strong> esse jogador: o sistema revela imediatamente se é
-                criatura ou morador — ela conta de boa, sem custo nenhum.
+                Se a Geni <strong>já conversou</strong> com essa pessoa numa noite anterior: o sistema revela
+                em segredo se é criatura, morador ou neutro.
               </li>
               <li>
-                Se a Geni <strong>não investigou</strong> ainda: o sistema bloqueia o poder de Confiança da
-                Geni na noite seguinte — ele perguntou sem ela ter nada pra oferecer, e ela não gostou.
+                Se ela <strong>ainda não conversou</strong> com essa pessoa (ou só conversou nesta mesma noite):
+                o sistema avisa que ela ainda não sabe — sem custo para ninguém; vale tentar de novo depois.
               </li>
             </ul>
           </>
@@ -585,29 +585,34 @@ export const ROLE_LORE: Record<string, string | LoreRich> = {
         kind: "kv",
         title: "Acusação Formal (poder de dia)",
         content:
-          "Uma vez por jogo, indica um jogador e força uma votação exclusiva sobre aquele alvo — a maioria decide a expulsão imediatamente.",
+          "Uma vez por jogo, escolhe um alvo e confirma a acusação formal: quem for indicado é expulso da cidade na hora — não há votação da praça sobre isso. Nesse dia, os votos de expulsão normais não valem (ficam só como registro na crônica).",
       },
       {
         kind: "aside",
         text:
-          "Se usar a acusação em alguém que não é o Boitatá, perde o poder para o resto do jogo e sua identidade é revelada ao grupo.",
+          "Acertar o Boitatá dá vitória individual ao Coronel sem revelar o papel dele. Se a acusação cair em outra pessoa, ela sai mesmo assim — e o Coronel se revela ao grupo.",
+      },
+      {
+        kind: "aside",
+        text:
+          "Contra o Saci que ainda não usou o Gorro Vermelho, a praça entra na mesma pausa da expulsão por voto: o Saci pode trocar de lugar com outro jogador.",
       },
       {
         kind: "kv",
         title: "O blefe",
         content:
-          "Para cumprir seu objetivo, o Coronel precisa convencer o grupo sem revelar seu papel. Revelar o papel antes da expulsão cancela o objetivo individual.",
+          "Para cumprir o objetivo de acertar o Boitatá, o ideal é não ser reconhecido como Coronel antes — mas a cidade pode pressionar de qualquer jeito.",
       },
       {
         kind: "kv",
         title: "Objetivo",
         content:
-          "Usar a acusação formal para expulsar o Boitatá — sem revelar seu próprio papel antes da expulsão acontecer.",
+          "Usar a acusação formal para expulsar o Boitatá sem se revelar como Coronel no ato (quando acerta o fogo, o papel do Coronel continua por baixo do chapéu).",
       },
       {
         kind: "aside",
         text:
-          "Se revelar o papel antes, vence com os moradores normalmente, mas sem conquista individual.",
+          "Se a acusação cair em outra pessoa, você ainda expulsa o alvo — mas a praça passa a saber quem deu a ordem; dá para vencer com os moradores, mas sem a estrela da conquista individual sobre o Boitatá.",
       },
     ],
   },
@@ -645,7 +650,7 @@ geni:         "Você conversa com alguém (morador ou criatura), usa o Charme de
 boitata:      "Na 1ª noite escolha alinhamento e investigue alguém; depois pode investigar ou passar (não repete alvo de noites anteriores).",
 cartomante:   "Você investiga alguém para revelar o lado — ou passa (a partir da 2ª noite), sem repetir alvo de noites anteriores.",
 delegado:     "Você pode prender alguém — ele perde o voto no próximo dia (motivo lido em voz alta) — ou passar. Não pode prender a mesma pessoa em duas noites seguidas.",
-cangaceiro:   "Você consulta se a Geni já investigou seu alvo, preparando o Tiro Certo para o dia.",
+cangaceiro:   "Você consulta em segredo se a Geni já sabe de alguém (noites anteriores), preparando o Tiro Certo para o dia.",
 padre:        "Você catequiza alguém — ele fica imune à sedução da Iara e ao terror da Mula nessa noite.",
 };
 

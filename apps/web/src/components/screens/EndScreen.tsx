@@ -6,6 +6,23 @@ import { ROLE_DISPLAY, ROLE_LORE, RoleLoreContent } from "../../lib/roleStories.
 import { useGameSummary } from "../../hooks/useGameSummary.js";
 import type { PlayerDoc, PublicLogEntry, RoomDoc } from "../../types.js";
 
+/** Entradas `special` que pertencem à fase da noite / abertura (não ao cordel do dia). */
+function isNightPublicSpecial(e: PublicLogEntry): boolean {
+  const m = String(e.message ?? "");
+  return m.startsWith("Alinhamento (1ª noite):") || m.includes("Mesa de cinco: por regra do cordel");
+}
+
+/** Evita repetir a mesma estrofe de encerramento (ex.: dupla chamada a `tryEndGameCollective`). */
+function dedupeChronicleEndEntries(entries: PublicLogEntry[]): PublicLogEntry[] {
+  const seen = new Set<string>();
+  return entries.filter((e) => {
+    const key = String(e.message ?? "");
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 type NightActionRow = Record<
   string,
   { role?: string; action?: string; targetId?: string | null; specialAction?: string | null }
@@ -183,17 +200,28 @@ export function EndScreen({
           Array.from({ length: totalRounds }, (_, i) => i + 1).map((r) => {
             const nightActions = allNightActions[r] ?? {};
             const roundVotes = allRoundVotes[r] ?? {};
-            const nightPublicEntries = publicLog.filter(
-              (e) => e.round === r && ["death", "bite", "terror", "invocation", "special"].includes(e.type ?? ""),
+            const nightPublicEntries = publicLog.filter((e) => {
+              if (e.round !== r) return false;
+              const t = e.type ?? "";
+              if (["death", "bite", "terror", "invocation", "dawn"].includes(t)) return true;
+              return t === "special" && isNightPublicSpecial(e);
+            });
+            const dayChronicleOutcomes = publicLog.filter((e) => {
+              if (e.round !== r) return false;
+              const t = e.type ?? "";
+              if (t === "expulsion") return true;
+              return t === "special" && !isNightPublicSpecial(e);
+            });
+            const roundChronicleEnd = dedupeChronicleEndEntries(
+              publicLog.filter((e) => e.round === r && e.type === "chronicle_end"),
             );
-            const dayPublicEntries = publicLog.filter((e) => e.round === r && e.type === "expulsion");
-            const roundChronicleEnd = publicLog.filter((e) => e.round === r && e.type === "chronicle_end");
             const neutralAlignExplain = players.filter((p) => {
               const role = revealed[p.id ?? ""];
               const al = p.alignment === "moradores" || p.alignment === "criaturas" ? p.alignment : null;
               return (role === "curupira" || role === "boitata") && al;
             });
             const hasVotes = Object.keys(roundVotes).length > 0;
+            const votesVoidedThisRound = Number(room.voidedDayExpulsionRound ?? NaN) === r;
             const actionLines = Object.entries(nightActions).flatMap(([pid, act]) => {
               if (
                 !act?.targetId &&
@@ -271,12 +299,19 @@ export function EndScreen({
                       const voterName = playerNameById[voterId] ?? voterId;
                       const targetName = targetId ? (playerNameById[targetId] ?? targetId) : "voto nulo";
                       return (
-                        <p key={voterId} className="chronicle-line">
+                        <p
+                          key={voterId}
+                          className={
+                            votesVoidedThisRound
+                              ? "chronicle-line chronicle-votes-voided"
+                              : "chronicle-line"
+                          }
+                        >
                           {voterName} <span className="chronicle-arrow">→</span> {targetName}
                         </p>
                       );
                     })}
-                    {dayPublicEntries.map((e) => (
+                    {dayChronicleOutcomes.map((e) => (
                       <p key={e.id} className="chronicle-outcome">
                         {e.message}
                       </p>

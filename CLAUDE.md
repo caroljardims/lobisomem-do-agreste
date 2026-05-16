@@ -37,7 +37,7 @@ Sistema de party game remoto baseado em turnos. Jogadores acessam via browser no
   votingOpen: boolean,           // true durante todo o dia; false após finalizeDay()
   votesRound: number,            // rodada cujos votos estão sendo coletados
   saciActedLastNight: boolean,   // Saci agiu na noite anterior (voto em Brás conta em dobro no dia); derivado em finalizeNight() a partir de nightActions
-  geniInvestigatedTargets: string[], // IDs investigados pela Geni nessa noite (acumulados)
+  geniInvestigatedTargets: Array<{ playerId: string, round: number, result: 'criatura' | 'morador' }>, // conversas da Geni (acumulado). Legado em salas antigas: string[] (playerId só). No amanhecer, consulta do Cangaceiro e Romance da Caatinga só consideram entradas com round < rodada atual; Tiro Certo (dia) usa round <= rodada do dia.
   pendingBrasChoice: boolean,    // Brás Cubas foi expulso e precisa escolher
   pendingSaciGorro: {            // Saci venceu a votação de expulsão e ainda não escolheu substituto
     saciPlayerId: string,
@@ -320,9 +320,9 @@ Se um personagem não está na partida ou está morto/expulso, o sistema pula au
 **Geni**
 
 - Opções: selecionar alvo para **conversar** (investigar) **ou** usar Charme de Verdade (proteger)
-- Conversar: sistema responde apenas a ela — morador ou criatura. Acumula alvo em `geniInvestigatedTargets`
+- Conversar: sistema responde apenas a ela — morador ou criatura. Acumula alvo em `geniInvestigatedTargets` como `{ playerId, round, result }` (rodada = noite em que conversou).
 - Charme de Verdade: uso único — protege o alvo de qualquer ação noturna de criatura nessa noite (adiciona ao conjunto de alvos protegidos, igual a Curupira/Doutor). Sistema marca `geniCharmUsed: true` no jogador. Alvo não sabe que foi protegido.
-- Se alvo da conversa for o Cangaceiro (Romance da Caatinga): sistema revela ao Cangaceiro a identidade completa de todos os jogadores que a Geni já investigou até essa rodada
+- Se alvo da conversa for o Cangaceiro (Romance da Caatinga): sistema revela ao Cangaceiro a identidade de todos os jogadores que a Geni **já tinha** investigado em **noites anteriores** (rodada da conversa menor que a rodada atual; a conversa desta noite com o Cangaceiro não entra na lista)
 - Inimigo secreto: sistema notifica na primeira noite sobre o Boto
 
 **Boitatá**
@@ -359,9 +359,9 @@ Se um personagem não está na partida ou está morto/expulso, o sistema pula au
 **Cangaceiro**
 
 - Opções: consultar alvo ou passar
-- Consulta — sistema verifica:
-  - Se a Geni **já investigou** o alvo: sistema revela ao Cangaceiro se é criatura ou morador
-  - Se a Geni **não investigou** o alvo: sistema marca `blockedNextNight: true` na Geni
+- Consulta — sistema verifica (só conversas com `round` menor que a rodada atual; a conversa desta noite ainda não conta):
+  - Se a Geni **já conversou** com o alvo numa noite anterior: mensagem privada ao Cangaceiro com criatura, morador ou neutro
+  - Se ainda **não** conversou (ou só nesta mesma noite): mensagem privada informando que ela ainda não sabe — **sem penalidade** para a Geni
 - Tiro Certo é ação do dia — não aparece aqui
 - Inimigo secreto: sistema notifica na primeira noite sobre a Iara
 
@@ -369,7 +369,9 @@ Se um personagem não está na partida ou está morto/expulso, o sistema pula au
 
 ## Resolução do amanhecer
 
-Após todos agirem, o sistema resolve na seguinte ordem antes de publicar qualquer anúncio:
+O motor resolve efeitos na ordem mecânica de [`dawnResolver`](packages/game-engine/src/dawnResolver.ts), mas grava **nesta ordem**: (1) entradas no **log privado dos alvos** — textos atmosféricos do ponto de vista de quem sofreu o efeito (sucesso ou falha), **sem** nomear o personagem causador nem revelar seu papel; (2) entradas no log privado dos **atores** (investigações, consulta do Cangaceiro, Romance da Caatinga, etc.); (3) linhas do **Folhetim público** (mortes, terror, mordida, invocação, prisão do Delegado, “noite em silêncio”, etc.). **Exceção:** no Romance da Caatinga, a mensagem ao Cangaceiro ainda nomeia Geni, por regra de papel.
+
+Após todos agirem, o sistema aplica a seguinte ordem **lógica** de efeitos (antes do Folhetim ser persistido no passo (3) acima):
 
 1. **Computar alvos protegidos:** Curupira + Doutor + Geni Charme de Verdade → conjunto `protectedTargets`
 2. **Padre:** catequizar alvo — marcar `catechized: true`; acumular em `padreCatechizedMoradores` (moradores apenas)
@@ -380,7 +382,7 @@ Após todos agirem, o sistema resolve na seguinte ordem antes de publicar qualqu
 6. **Iara:** processar sedução ou Voz Encantadora (falha silenciosa se alvo protegido ou catequizado)
   - Se Voz Encantadora no Delegado → registrar vitória individual da Iara
 7. **Lobisomem:** verificar proteção do alvo
-  - Alvo protegido (`protectedTargets`) → ataque falhou, não anunciar nada
+  - Alvo protegido (`protectedTargets`) → ataque falhou, não anunciar nada no Folhetim; o alvo recebe **log privado** de sensação (sem identificar o lobisomem)
   - Alvo não protegido + ação eliminar → morte confirmada
   - Alvo não protegido + ação morder → registrar mordida em segredo
   - Alvo mordido + Doutor salvou → licantropia revertida, não anunciar
@@ -420,6 +422,7 @@ Sistema publica texto de abertura no log público. Porta-voz lê.
 
 Sistema aplica efeitos ativos:
 
+- Ao entrar no dia, quem **acabou de** ficar `enchanted` ou `seduced` neste amanhecer recebe uma linha extra no **log privado** (cordel / Bucaré), antes do texto de abertura do dia no Folhetim — prepara a restrição de voto sem nomear o causador.
 - `silenced: true` → jogador vê aviso de silêncio na tela, não pode enviar mensagens por 2 minutos
 - `seduced: true` → jogador não tem opção de voto
 - `enchanted: true` → jogador pode votar, mas sistema bloqueia voto contra criaturas
@@ -432,13 +435,13 @@ Sistema de chat por sala disponível durante a fase do dia. Jogadores silenciado
 
 ### Coronel — acusação formal
 
-O Coronel tem botão de "Acusação Formal" disponível durante o dia. Ao acionar:
+O Coronel tem o controle de "Acusação Formal" ao lado do voto de expulsão no dia. Ao confirmar (após escolher o alvo no mesmo seletor do voto):
 
-- Sistema solicita alvo
-- Votação imediata e exclusiva sobre aquele alvo — sim ou não
-- Maioria simples decide
-- Se alvo for o Boitatá: sistema registra objetivo individual cumprido
-- Se alvo não for o Boitatá: Coronel perde o poder e identidade é revelada ao grupo
+- Apenas o Coronel decide — não há votação sim/não da cidade sobre a acusação
+- **Nesse dia, a votação de expulsão da praça deixa de valer:** o sistema encerra o dia, anula a contagem dos votos já lançados (ficam registrados na crônica apenas como histórico, riscados) e ninguém pode votar de novo até a noite seguinte
+- **O alvo escolhido é expulso da cidade** (como na expulsão por voto), incluindo efeitos especiais (Brás, Padre/Mula, Saci com Gorro pendente, etc.)
+- **Objetivo individual:** acertar o **Boitatá** com a acusação formal — aí o sistema registra a vitória individual do Coronel **sem** revelar o papel dele na praça
+- Se a acusação formal cair em **outro** papel: o alvo sai mesmo assim e o **Coronel se revela** ao grupo (perde o disfarce para o resto da partida)
 
 ### Votação de expulsão
 
@@ -620,18 +623,6 @@ Vitória por lua cheia: após um amanhecer, se `round > maxRounds` na verificaç
 
 # To Do
 
-## Pendente
-
-### Questões de design para validar
-
-**1. Geni + Cangaceiro na mesma noite: Cangaceiro vê alvo investigado nesta noite**
-
-Arquivo: functions/src/handlers/night.ts — submitNightAction para Geni
-
-room.geniInvestigatedTargets é atualizado em submitNightAction durante a noite. Quando finalizeNight roda, esse histórico já inclui o alvo investigado nesta mesma noite. Então se Geni conversa com X na rodada 3 e o Cangaceiro consulta X na mesma rodada 3, o dawn resolver vê X como "já investigado" e revela a identidade ao Cangaceiro.
-
-A pergunta é: "já investigou" deve incluir a noite atual ou só noites anteriores?
-
 ## Concluído
 
 - ✓ Gorro Vermelho — intercepta expulsão do Saci em `finalizeDay`; modal privado 60s; `submitSaciGorroChoice` / `expireSaciGorro` / `expireSaciGorroTask`; substituto expulso com anúncio normal
@@ -650,6 +641,7 @@ A pergunta é: "já investigou" deve incluir a noite atual ou só noites anterio
 - ✓ Apocalipse Robô — quando todos os humanos saem e só bots restam, `finalizeDay()` detecta e encerra com `winner: "bots"`; bots votam nulo neste cenário (votam em qualquer vivo quando há humanos)
 - ✓ findPlayer — lookup por `playerId` (localStorage) antes de uid, evitando quebra quando Firebase renova uid de auth anônima
 - ✓ Flags de status por rodada — `dawnResolver` reseta `seduced`, `jailed`, `enchanted`, `blockedNextNight`, `invoked`, `silenced`, `silencedRounds` a cada amanhecer (antes eram acumulados permanentemente)
+- ✓ Log privado ao alvo — `dawnTargetExperience` + `resolveDawn`: fila alvos → atores → Folhetim público; textos atmosféricos sem nomear causador (exceção Romance nomeia Geni); ao abrir o dia, `finalizeNight` envia aviso extra para quem acabou de ficar `enchanted` / `seduced`
 - **Componente colapsável com a história do Personagem:** Em todas as telas o player pode ver a história do seu personagem para lembrar seu papel no role play. Isso pode ficar num componente colapsável no topo da tela pra não ocupar espaço o tempo todo. na primeira noite, ele aparece aberto.
 - **Crônica da partida:** pode ficar grande, aumentar a altura para caber mais texto. Pode ter a mesma fonte do folhetim no título e textos.
 - **Refatoração dos arquivos grandes:** Projeto não tem arquitetura. Propor modelo escalável para refatoração. Não executar imediatamente.

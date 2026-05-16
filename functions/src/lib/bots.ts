@@ -1,5 +1,10 @@
 import { FieldValue } from "firebase-admin/firestore";
 import type { NightActionInput, RoleId } from "folclore-game-engine";
+import {
+  geniConversedPlayerIds,
+  isCreatureRole,
+  normalizeGeniInvestigatedTargets,
+} from "folclore-game-engine";
 import { db } from "./db.js";
 import { loadPlayers, loadSecrets } from "../helpers.js";
 import { setNightSuspicion } from "./playerPrivateScore.js";
@@ -45,7 +50,7 @@ export async function processBotNightActions(roomCode: string, round: number): P
 
   const nightRef = roomRef.collection("nightActions").doc(String(round));
   const remainingPending: RoleId[] = [];
-  let geniInvestigatedTargets = [...((room.geniInvestigatedTargets as string[]) ?? [])];
+  let geniInvestigatedTargets = normalizeGeniInvestigatedTargets(room.geniInvestigatedTargets);
 
   const privSnap = await roomRef.collection("playerPrivate").get();
   const usedByPlayer = new Map<string, string[]>();
@@ -94,7 +99,8 @@ export async function processBotNightActions(roomCode: string, round: number): P
         else targetId = pool[Math.floor(Math.random() * pool.length)]!.id;
       }
     } else if (role === "geni") {
-      const convPool = targets.filter((t) => !geniInvestigatedTargets.includes(t.id));
+      const geniIds = new Set(geniConversedPlayerIds(geniInvestigatedTargets));
+      const convPool = targets.filter((t) => !geniIds.has(t.id!));
       if (convPool.length > 0) {
         action = "converse";
         targetId = convPool[Math.floor(Math.random() * convPool.length)]!.id;
@@ -151,18 +157,20 @@ export async function processBotNightActions(roomCode: string, round: number): P
       role === "geni" &&
       targetId &&
       action === "converse" &&
-      !geniInvestigatedTargets.includes(targetId) &&
+      !geniConversedPlayerIds(geniInvestigatedTargets).includes(targetId) &&
       !Boolean(actor.blockedNextNight)
     ) {
-      geniInvestigatedTargets = [...geniInvestigatedTargets, targetId];
+      const tr = secrets[targetId]?.role;
+      const result: "criatura" | "morador" = tr && isCreatureRole(tr) ? "criatura" : "morador";
+      geniInvestigatedTargets = [...geniInvestigatedTargets, { playerId: targetId, round, result }];
     }
   }
 
   const roomUpdates: Record<string, unknown> = {};
   if (remainingPending.length !== pendingRoles.length) roomUpdates.nightPendingRoles = remainingPending;
   if (readyBotIds.length > 0) roomUpdates.nightReadyPlayerIds = FieldValue.arrayUnion(...readyBotIds);
-  const initialGeni = (room.geniInvestigatedTargets as string[]) ?? [];
-  if (geniInvestigatedTargets.length !== initialGeni.length) {
+  const initialGeni = normalizeGeniInvestigatedTargets(room.geniInvestigatedTargets);
+  if (JSON.stringify(geniInvestigatedTargets) !== JSON.stringify(initialGeni)) {
     roomUpdates.geniInvestigatedTargets = geniInvestigatedTargets;
   }
   if (Object.keys(roomUpdates).length > 0) {

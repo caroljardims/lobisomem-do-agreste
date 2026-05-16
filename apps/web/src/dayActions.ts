@@ -28,25 +28,13 @@ export function hasPendingSaciGorro(room: DayRoomFlags | undefined): boolean {
   return p != null && typeof p === "object" && "saciPlayerId" in p;
 }
 
-/** Coronel inicia acusação formal (fora de uma votação de acusação já aberta). */
+/** Coronel pode usar acusação formal uma vez (enquanto `actionUsed` for false). */
 export function canShowCoronelAccuse(
   myRole: string | null,
   room: DayRoomFlags,
   me: DayPlayerFlags | undefined,
 ): boolean {
-  return (
-    myRole === "coronel" &&
-    isDayParticipant(me) &&
-    room.daySubPhase !== "coronel_accusation"
-  );
-}
-
-/** Todos os jogadores vivos participam da votação sim/não da acusação formal. */
-export function canShowCoronelAccusationVotes(
-  room: DayRoomFlags,
-  me: DayPlayerFlags | undefined,
-): boolean {
-  return room.daySubPhase === "coronel_accusation" && isDayParticipant(me);
+  return myRole === "coronel" && isDayParticipant(me) && !me?.actionUsed;
 }
 
 export function canShowCangaceiroTiro(
