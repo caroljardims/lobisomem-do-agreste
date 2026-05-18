@@ -25,7 +25,7 @@ import {
 import {
   ROLE_DISPLAY,
   ROLE_LORE,
-  ROLE_NIGHT_DESCRIPTION,
+  ROLE_XILO,
   RoleLoreContent,
 } from "./lib/roleStories.js";
 import { useChat } from "./hooks/useChat.js";
@@ -45,6 +45,8 @@ import { canBeExpulsionVoteTarget, canSubmitExpulsionVote } from "./lib/playerVo
 import type { PlayerDoc, RoomDoc, View } from "./types.js";
 import { BtnSpinner } from "./components/BtnSpinner.js";
 import { EndScreen } from "./components/screens/EndScreen.js";
+import { NightScreen } from "./components/screens/NightScreen.js";
+import { AVATAR_GLYPHS } from "./lib/playerGlyph.js";
 import { MinhaContaScreen } from "./components/screens/MinhaContaScreen.js";
 import {
   closeAccountToHome,
@@ -63,16 +65,6 @@ function copyToClipboard(text: string) {
 const LS_ROOM = "folclore_roomCode";
 const LS_PLAYER = "folclore_playerId";
 const LS_GLYPH = "folclore_glyph";
-
-const AVATAR_GLYPHS = ["☽", "✦", "◆", "❖", "✧", "☆", "★", "◉"];
-
-/** Xilogravuras disponíveis para o batismo (criaturas). */
-const ROLE_XILO: Record<string, string> = {
-  lobisomem: "/assets/xilo-lobisomem.png",
-  saci:      "/assets/xilo-saci.png",
-  mula:      "/assets/xilo-mula.png",
-  iara:      "/assets/xilo-iara.png",
-};
 
 /** @deprecated – kept only during refactor; use RoleLoreContent directly */
 function extractBatismoSections(lore: unknown): { quem: string; faz: string; quer: string } {
@@ -1119,13 +1111,32 @@ export function App() {
           ← sair
         </button>
         <span className="session-label">
-          {inLobby ? "lobby" : `rodada ${room?.round ?? 1}`}
+          {inLobby
+            ? "lobby"
+            : room?.status === "night"
+              ? `rodada ${room.round ?? 1} · noite`
+              : room?.status === "day"
+                ? `rodada ${room.round ?? 1} · dia`
+                : `rodada ${room?.round ?? 1}`}
         </span>
         <span className="online-pill">
           <span className="dot-online" />
           {players.length}
         </span>
-        {user && (
+        {room?.status === "night" && myRole && !showBatismo ? (
+          <button
+            type="button"
+            className="back-link noite-help-btn"
+            style={{ marginLeft: "auto" }}
+            aria-label="Reler carta do personagem"
+            onClick={() => {
+              setLoreSheetFolhetoOpen(true);
+              setLoreOpen(true);
+            }}
+          >
+            ?
+          </button>
+        ) : user ? (
           <button
             type="button"
             className="back-link"
@@ -1136,7 +1147,7 @@ export function App() {
           >
             Ranking
           </button>
-        )}
+        ) : null}
       </div>
 
       {err && <p className="error">{err}</p>}
@@ -1339,16 +1350,49 @@ export function App() {
         );
       })()}
 
-      {room && room.status !== "lobby" && room.status !== "ended" && !showBatismo && (
+      {room && room.status === "night" && !showBatismo && (
+        <NightScreen
+          room={room}
+          roomCode={roomCode}
+          players={players}
+          playerId={playerId}
+          myRole={myRole}
+          selfGlyph={glyph}
+          roleActionOptions={roleActionOptions}
+          myPrivate={myPrivate}
+          nightTarget={nightTarget}
+          setNightTarget={setNightTarget}
+          nightAction={nightAction}
+          setNightAction={setNightAction}
+          nightSpecialAction={nightSpecialAction}
+          setNightSpecialAction={setNightSpecialAction}
+          nightActionSent={nightActionSent}
+          setNightActionSent={setNightActionSent}
+          suspicionTarget={suspicionTarget}
+          setSuspicionTarget={setSuspicionTarget}
+          suspicionSent={suspicionSent}
+          setSuspicionSent={setSuspicionSent}
+          cangConsultTarget={cangConsultTarget}
+          setCangConsultTarget={setCangConsultTarget}
+          nightToast={nightToast}
+          delegadoIntroDismissed={delegadoIntroDismissed}
+          setDelegadoIntroDismissed={setDelegadoIntroDismissed}
+          delegadoJustifyInlineError={delegadoJustifyInlineError}
+          setDelegadoJustifyInlineError={setDelegadoJustifyInlineError}
+          loreOpen={loreOpen}
+          setLoreOpen={setLoreOpen}
+          loreSheetFolhetoOpen={loreSheetFolhetoOpen}
+          setLoreSheetFolhetoOpen={setLoreSheetFolhetoOpen}
+          run={run}
+          busy={busy}
+          anyPending={anyPending}
+        />
+      )}
+
+      {room && room.status === "day" && !showBatismo && (
         <div className="game-card">
           <p>
-            <strong>
-              {room.status === "day"
-                ? `Dia ${room.round ?? 1}`
-                : room.status === "night"
-                  ? `Noite ${room.round ?? 1}`
-                  : `Rodada ${room.round ?? 1}`}
-            </strong>
+            <strong>Dia {room.round ?? 1}</strong>
           </p>
           {typeof room.maxRounds === "number" && room.maxRounds > 0 && (
             <p className="muted" style={{ marginTop: "0.35rem", lineHeight: 1.45 }}>
@@ -1425,415 +1469,8 @@ export function App() {
             );
           })()}
 
-          {room.status === "night" && (() => {
-            const meNight = players.find((p) => p.id === playerId);
-            const myRoleIsPending = !!(myRole && room.nightPendingRoles?.includes(myRole));
-            const needsAlignment =
-              (myRole === "curupira" || myRole === "boitata") &&
-              room.round === 1 &&
-              Number(room.gameTablePlayerCount) !== 5;
-            const targetPool = myRole === "mae_de_santo"
-              ? players.filter((p) => p.eliminated && !p.expelled)
-              : players.filter((p) => p.id !== playerId && p.alive !== false && !p.eliminated && !p.expelled);
-            const delegadoPass = myRole === "delegado" && nightAction === "pass";
-            const nightRolePass =
-              nightAction === "pass" &&
-              (myRole === "geni" ||
-                myRole === "doutor" ||
-                myRole === "mae_de_santo" ||
-                myRole === "cartomante" ||
-                myRole === "boitata");
-            const hideNightTarget = delegadoPass || nightRolePass;
-            const needsJailReason = myRole === "delegado" && !delegadoPass;
-            let canSubmit = false;
-            if (!anyPending) {
-              if (delegadoPass || nightRolePass) canSubmit = true;
-              else if (myRole === "delegado" && nightAction === "jail") {
-                canSubmit =
-                  !!nightTarget && (nightSpecialAction?.trim().length ?? 0) >= 10;
-              } else {
-                canSubmit =
-                  !!nightTarget &&
-                  (!needsAlignment || !!nightSpecialAction);
-              }
-            }
-            const canMarkNightReady =
-              !myRoleIsPending &&
-              roleActionOptions.length === 0 &&
-              meNight?.alive !== false &&
-              !meNight?.eliminated &&
-              !meNight?.expelled;
-            const showCangConsult =
-              myRole === "cangaceiro" &&
-              meNight?.alive !== false &&
-              !meNight?.eliminated &&
-              !meNight?.expelled;
-            const usedTargets = new Set(myPrivate?.investigationTargetsUsed ?? []);
-            const geniKnown = new Set(
-              geniConversedPlayerIds(normalizeGeniInvestigatedTargets(room.geniInvestigatedTargets)),
-            );
-            const blockInvestigation =
-              myRole === "geni"
-                ? geniKnown
-                : myRole === "cartomante" || myRole === "boitata"
-                  ? usedTargets
-                  : new Set<string>();
-            const lastJailedId = (meNight?.delegadoLastJailedId as string | undefined) ?? "";
-            const filteredTargetPool = targetPool
-              .filter((p) => !blockInvestigation.has(p.id ?? ""))
-              .filter((p) => !(myRole === "delegado" && lastJailedId && p.id === lastJailedId));
-            const showSuspicion =
-              !!meNight &&
-              meNight.alive !== false &&
-              !meNight.eliminated &&
-              !meNight.expelled &&
-              (!myRoleIsPending || nightActionSent);
 
-            const delegadoIntroVisible =
-              myRoleIsPending &&
-              myRole === "delegado" &&
-              (room.round ?? 1) === 1 &&
-              !delegadoIntroDismissed;
-            const delegadoJailSelectedName =
-              nightTarget && myRole === "delegado" && nightAction === "jail"
-                ? players.find((p) => p.id === nightTarget)?.name ?? "esta pessoa"
-                : "";
-            const nightMissingTargetOnly =
-              !hideNightTarget && !nightTarget && !delegadoPass && !nightRolePass;
-            const delegadoJailNeedsMoreText =
-              myRole === "delegado" &&
-              nightAction === "jail" &&
-              Boolean(nightTarget) &&
-              (nightSpecialAction?.trim().length ?? 0) < 10;
-
-            return (
-              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                {nightToast ? (
-                  <div className="night-flow-toast" role="status">
-                    {nightToast}
-                  </div>
-                ) : null}
-                {delegadoIntroVisible ? (
-                  <div className="delegado-night-intro-backdrop" role="dialog" aria-modal="true">
-                    <div className="delegado-night-intro-card">
-                      <h2 className="delegado-night-intro-title">👮 Sua vez, Delegado</h2>
-                      <p className="delegado-night-intro-body">
-                        Você pode prender um suspeito esta noite.
-                      </p>
-                      <p className="delegado-night-intro-body">
-                        Se prender alguém, escreva uma justificativa — ela vai aparecer no Folhetim amanhã.
-                      </p>
-                      <p className="muted delegado-night-intro-timer-note">
-                        Depois de continuar, você terá {NIGHT_ROLE_ACTION_SECONDS}s para enviar prender ou passar.
-                      </p>
-                      <button
-                        type="button"
-                        className="chip-btn delegado-night-intro-btn"
-                        onClick={() => {
-                          sessionStorage.setItem(`folhetim_delegado_night_intro_${roomCode}`, "1");
-                          setDelegadoIntroDismissed(true);
-                        }}
-                      >
-                        Entendi
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
-                {showCangConsult && (
-                  <div className="game-card" style={{ alignSelf: "stretch" }}>
-                    <p className="muted" style={{ marginTop: 0 }}>
-                      Consultar se a Geni investigou alguém? (opcional — não gasta o Tiro Certo)
-                    </p>
-                    <label className="field-label">Jogador</label>
-                    <select
-                      className="vote-select"
-                      value={cangConsultTarget}
-                      onChange={(e) => setCangConsultTarget(e.target.value)}
-                    >
-                      <option value="">— escolher —</option>
-                      {players
-                        .filter((p) => p.id !== playerId && p.alive !== false && !p.eliminated && !p.expelled)
-                        .map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {formatDebugPlayerOpt(p)}
-                          </option>
-                        ))}
-                    </select>
-                    <div className="row" style={{ marginTop: 8, gap: 8, flexWrap: "wrap" }}>
-                      <button
-                        type="button"
-                        className="chip-btn chip-btn--with-spinner"
-                        disabled={anyPending || !cangConsultTarget || busy("cangConsult")}
-                        onClick={() =>
-                          void run(
-                            "submitCangaceiroConsult",
-                            { roomCode, targetId: cangConsultTarget },
-                            "cangConsult",
-                          )
-                            .then(() => setCangConsultTarget(""))
-                            .catch(() => {})
-                        }
-                      >
-                        <span className="btn-with-spinner">
-                          {busy("cangConsult") ? "enviando…" : "Enviar consulta"}
-                          <BtnSpinner show={busy("cangConsult")} />
-                        </span>
-                      </button>
-                      <button
-                        type="button"
-                        className="chip-btn chip-btn--with-spinner"
-                        disabled={anyPending || busy("cangPass")}
-                        onClick={() =>
-                          void run("submitCangaceiroConsult", { roomCode, pass: true }, "cangPass").catch(() => {})
-                        }
-                      >
-                        <span className="btn-with-spinner">
-                          {busy("cangPass") ? "…" : "Passar"}
-                          <BtnSpinner show={busy("cangPass")} />
-                        </span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-                {myRoleIsPending ? (
-                  <>
-                    {myRole && ROLE_NIGHT_DESCRIPTION[myRole] && (
-                      <p className="muted" style={{ margin: 0 }}>
-                        {ROLE_NIGHT_DESCRIPTION[myRole]}
-                      </p>
-                    )}
-                    {roleActionOptions.length > 1 && (
-                      <>
-                        <label>Ação</label>
-                        <select value={nightAction} onChange={(e) => setNightAction(e.target.value)}>
-                          {roleActionOptions.map((o) => (
-                            <option key={o.value} value={o.value}>{o.label}</option>
-                          ))}
-                        </select>
-                      </>
-                    )}
-                    {needsAlignment && (
-                      <>
-                        <label>Seu alinhamento (rodada 1)</label>
-                        <select value={nightSpecialAction ?? ""} onChange={(e) => setNightSpecialAction(e.target.value)}>
-                          <option value="">escolha um lado…</option>
-                          <option value="moradores">moradores</option>
-                          <option value="criaturas">criaturas</option>
-                        </select>
-                      </>
-                    )}
-                    {hideNightTarget && (
-                      <p className="muted" style={{ margin: 0 }}>
-                        {delegadoPass
-                          ? "Prender é opcional. Você não pode prender a mesma pessoa em duas noites seguidas."
-                          : "Sem alvo esta noite — sua vez será concluída e a noite poderá seguir."}
-                      </p>
-                    )}
-                    {!hideNightTarget && (
-                      <div
-                        className={
-                          myRole === "delegado" && nightAction === "jail"
-                            ? "delegado-night-action-scroll"
-                            : undefined
-                        }
-                      >
-                        <label>Alvo</label>
-                        <select value={nightTarget} onChange={(e) => setNightTarget(e.target.value)}>
-                          <option value="">—</option>
-                          {filteredTargetPool.map((p) => (
-                            <option key={p.id} value={p.id}>{formatDebugPlayerOpt(p)}</option>
-                          ))}
-                        </select>
-                        {myRole === "delegado" && nightAction === "jail" ? (
-                          <p className="delegado-night-inline-hint">
-                            Você precisará escrever uma justificativa para que a prisão apareça no Folhetim.
-                          </p>
-                        ) : null}
-                        {myRole === "delegado" && nightAction === "jail" && nightTarget ? (
-                          <div className="delegado-justify-field-wrap">
-                            <label className="field-label" htmlFor="delegado-justify-input">
-                              Por que está prendendo {delegadoJailSelectedName}?
-                            </label>
-                            <textarea
-                              id="delegado-justify-input"
-                              className="delegado-justify-textarea"
-                              rows={3}
-                              maxLength={120}
-                              placeholder={`Há indícios de que ${delegadoJailSelectedName} está...`}
-                              value={nightSpecialAction ?? ""}
-                              onChange={(e) => setNightSpecialAction(e.target.value)}
-                              autoComplete="off"
-                            />
-                            <p className="delegado-justify-counter muted">
-                              {120 - (nightSpecialAction?.length ?? 0)} caracteres restantes
-                            </p>
-                            {delegadoJustifyInlineError ? (
-                              <p className="delegado-justify-error" role="alert">
-                                Escreva uma justificativa para continuar.
-                              </p>
-                            ) : null}
-                          </div>
-                        ) : null}
-                      </div>
-                    )}
-                    <button
-                      type="button"
-                      disabled={
-                        anyPending ||
-                        nightActionSent ||
-                        nightMissingTargetOnly ||
-                        (!delegadoJailNeedsMoreText && !canSubmit)
-                      }
-                      className={nightActionSent ? "vote-sent" : undefined}
-                      style={{ marginTop: "4px" }}
-                      onClick={() => {
-                        if (anyPending || nightActionSent) return;
-                        if (nightMissingTargetOnly) return;
-                        if (myRole === "delegado" && nightAction === "jail" && nightTarget) {
-                          const len = nightSpecialAction?.trim().length ?? 0;
-                          if (len < 10) {
-                            setDelegadoJustifyInlineError(true);
-                            return;
-                          }
-                        }
-                        setDelegadoJustifyInlineError(false);
-                        const payload: Record<string, unknown> = {
-                          roomCode,
-                          action: nightAction,
-                          targetId: nightTarget || null,
-                          specialAction: nightSpecialAction,
-                        };
-                        if (myRole === "delegado" && nightAction === "jail" && nightTarget) {
-                          payload.justification = nightSpecialAction?.trim() ?? "";
-                        }
-                        void run("submitNightAction", payload, "nightAction")
-                          .then(() => setNightActionSent(true))
-                          .catch(() => {});
-                      }}
-                    >
-                      <span className="btn-with-spinner">
-                        {busy("nightAction")
-                          ? "enviando…"
-                          : nightActionSent
-                            ? "✓ Ação registrada"
-                            : "Enviar ação"}
-                        <BtnSpinner show={busy("nightAction")} />
-                      </span>
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <p className="muted" style={{ margin: 0 }}>
-                      {myRole === "cangaceiro"
-                        ? "A consulta acima é opcional. Quando quiser, confirme o Toque da alvorada para amanhecer."
-                        : myRole && !["coronel", "aldeao", "bras_cubas"].includes(myRole)
-                          ? "Ação enviada. Aguardando os outros…"
-                          : "Você não tem ação noturna. Aguarde o amanhecer."}
-                    </p>
-                    {canMarkNightReady && (
-                      <button
-                        type="button"
-                        disabled={anyPending || nightActionSent}
-                        className={nightActionSent ? "vote-sent" : undefined}
-                        onClick={() =>
-                          void run("markNightReady", { roomCode }, "markNightReady")
-                            .then(() => setNightActionSent(true))
-                            .catch(() => {})
-                        }
-                      >
-                        <span className="btn-with-spinner">
-                          {busy("markNightReady")
-                            ? "enviando…"
-                            : nightActionSent
-                              ? "✓ Toque da alvorada enviado"
-                              : "Toque da alvorada"}
-                          <BtnSpinner show={busy("markNightReady")} />
-                        </span>
-                      </button>
-                    )}
-                  </>
-                )}
-                {showSuspicion && (
-                  <div className="game-card">
-                    <p className="muted" style={{ marginTop: 0 }}>
-                      Sua suspeita desta noite (opcional). Só você vê — ninguém mais na sala tem acesso.
-                    </p>
-                    {(myRole === "cartomante" ||
-                      myRole === "boitata" ||
-                      myRole === "geni") &&
-                      (myPrivate?.investigationTargetsUsed?.length ||
-                        (myRole === "geni" &&
-                          geniConversedPlayerIds(
-                            normalizeGeniInvestigatedTargets(room.geniInvestigatedTargets),
-                          ).length > 0)) && (
-                      <p className="muted" style={{ fontSize: "0.85rem" }}>
-                        Alvos já usados em investigação/prisão/conversa (não podem repetir):{" "}
-                        {(myRole === "geni"
-                          ? geniConversedPlayerIds(
-                              normalizeGeniInvestigatedTargets(room.geniInvestigatedTargets),
-                            )
-                          : myPrivate?.investigationTargetsUsed
-                        )?.map((id: string) => players.find((x) => x.id === id)?.name ?? id)
-                          .join(", ")}
-                      </p>
-                    )}
-                    <label className="field-label">Desconfio de:</label>
-                    <select
-                      className="vote-select"
-                      value={suspicionTarget}
-                      onChange={(e) => setSuspicionTarget(e.target.value)}
-                    >
-                      <option value="">— ninguém / passar —</option>
-                      {targetPool.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {formatDebugPlayerOpt(p)}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="row" style={{ marginTop: 8, gap: 8, flexWrap: "wrap" }}>
-                      <button
-                        type="button"
-                        className="chip-btn chip-btn--with-spinner"
-                        disabled={anyPending || suspicionSent || busy("suspicionPass")}
-                        onClick={() =>
-                          void run("submitNightSuspicion", { roomCode, pass: true }, "suspicionPass")
-                            .then(() => setSuspicionSent(true))
-                            .catch(() => {})
-                        }
-                      >
-                        <span className="btn-with-spinner">
-                          {busy("suspicionPass") ? "…" : "Passar"}
-                          <BtnSpinner show={busy("suspicionPass")} />
-                        </span>
-                      </button>
-                      <button
-                        type="button"
-                        className="chip-btn chip-btn--with-spinner"
-                        disabled={anyPending || !suspicionTarget || suspicionSent || busy("suspicionSend")}
-                        onClick={() =>
-                          void run(
-                            "submitNightSuspicion",
-                            { roomCode, targetId: suspicionTarget },
-                            "suspicionSend",
-                          )
-                            .then(() => setSuspicionSent(true))
-                            .catch(() => {})
-                        }
-                      >
-                        <span className="btn-with-spinner">
-                          {busy("suspicionSend") ? "enviando…" : "Confirmar suspeita"}
-                          <BtnSpinner show={busy("suspicionSend")} />
-                        </span>
-                      </button>
-                    </div>
-                    {suspicionSent && <p className="muted">✓ Registrado para o amanhecer.</p>}
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-
-          {room.status === "day" && (() => {
+          {(() => {
             const myPlayer = players.find((p) => p.id === playerId);
             const currentRound = room.round ?? 1;
             const isNightPublicSpecial = (e: { message?: string }) => {

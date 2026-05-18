@@ -20,6 +20,13 @@ export const ROLE_DISPLAY: Record<string, string> = {
   aldeao: "👨‍🌾 Aldeão",
 };
 
+/** Xilogravuras para etiqueta / batismo (criaturas com arte). */
+export const ROLE_XILO: Record<string, string> = {
+  lobisomem: "/assets/xilo-lobisomem.png",
+  saci: "/assets/xilo-saci.png",
+  mula: "/assets/xilo-mula.png",
+  iara: "/assets/xilo-iara.png",
+};
 
 export const ROLE_LORE: Record<string, string | LoreRich> = {
   lobisomem: {

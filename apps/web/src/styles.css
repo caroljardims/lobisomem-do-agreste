@@ -3259,8 +3259,9 @@ input::placeholder {
 
 .fase--noite {
   background:
-    radial-gradient(ellipse 70% 40% at 50% 0%, rgba(138,149,168,0.10) 0%, transparent 65%),
-    var(--ink-noite);
+    radial-gradient(ellipse 85% 55% at 50% 0%, rgba(72, 98, 140, 0.42) 0%, transparent 62%),
+    radial-gradient(ellipse 100% 70% at 50% 100%, rgba(18, 28, 48, 0.75) 0%, transparent 55%),
+    linear-gradient(180deg, #0c1424 0%, #0e0b08 38%, #080c16 100%);
 }
 
 .fase--noite::before {
@@ -3269,7 +3270,9 @@ input::placeholder {
   inset: 0;
   pointer-events: none;
   z-index: 0;
-  background: radial-gradient(ellipse 55% 30% at 50% 0%, rgba(138,149,168,0.07) 0%, transparent 70%);
+  background:
+    radial-gradient(ellipse 60% 35% at 50% 12%, rgba(120, 150, 200, 0.14) 0%, transparent 72%),
+    radial-gradient(ellipse 40% 25% at 80% 90%, rgba(40, 55, 90, 0.2) 0%, transparent 70%);
 }
 
 .fase--dia {
@@ -4007,6 +4010,15 @@ input::placeholder {
   background: rgba(178,58,46,0.10) !important;
   box-shadow: 0 0 0 1px rgba(178,58,46,0.4) inset;
 }
+.jogador-row--escolhido {
+  border-color: rgba(138, 149, 168, 0.55) !important;
+  background: rgba(138, 149, 168, 0.09) !important;
+  box-shadow: 0 0 0 1px rgba(138, 149, 168, 0.28) inset;
+}
+.jogador-row--escolhido .jogador-row__sim {
+  border-color: rgba(138, 149, 168, 0.45);
+  color: #c8d4e8;
+}
 .jogador-row--voto {
   border-color: var(--ouro-bucare) !important;
   background: rgba(212,162,76,0.10) !important;
@@ -4111,6 +4123,137 @@ input::placeholder {
 }
 .btn-noite:disabled { opacity: 0.35; cursor: not-allowed; }
 .btn-noite:not(:disabled):active { transform: translateY(1px); }
+
+/* ══════════════════════════════════════════════
+   TELA DE NOITE — layout protótipo
+   ══════════════════════════════════════════════ */
+
+.screen--noite {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: 0;
+  position: relative;
+  z-index: 1;
+  padding-bottom: 8px;
+}
+
+.noite-hero {
+  text-align: center;
+  padding: 4px 0 16px;
+}
+
+.noite-eyebrow {
+  margin: 12px 0 0;
+  font-size: 10px;
+  letter-spacing: 0.42em;
+  text-transform: uppercase;
+}
+
+.noite-prompt {
+  font-family: var(--ff-italic);
+  font-style: italic;
+  font-size: clamp(17px, 4.6vw, 20px);
+  line-height: 1.45;
+  color: var(--texto-claro);
+  text-align: center;
+  margin: 0 0 18px;
+  padding: 0 6px;
+}
+
+.noite-alvos {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.noite-alvos--compact {
+  margin-bottom: 8px;
+}
+
+.noite-footer {
+  margin-top: auto;
+  padding-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.noite-action-chips,
+.noite-align-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin-bottom: 14px;
+}
+
+.chip-btn--active {
+  border-color: var(--ouro-bucare) !important;
+  color: var(--ouro-brilho) !important;
+  background: rgba(212, 162, 76, 0.12) !important;
+}
+
+.noite-pass-link {
+  align-self: center;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.noite-cang-panel {
+  margin-bottom: 12px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--linha-fina);
+}
+
+.noite-cang-panel__label {
+  margin: 0 0 10px;
+  font-size: 12px;
+  text-align: center;
+}
+
+.noite-cang-actions {
+  justify-content: center;
+  margin-top: 8px;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.noite-delegado-justify {
+  margin-bottom: 12px;
+}
+
+.noite-lore-sheet {
+  margin-bottom: 12px;
+}
+
+.noite-lore-close {
+  align-self: center;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+}
+
+.fase--noite .session-label {
+  color: var(--luar);
+  letter-spacing: 0.22em;
+}
+
+.noite-help-btn {
+  min-width: 28px;
+  text-align: center;
+  font-family: var(--ff-display);
+  font-size: 16px;
+  line-height: 1;
+  padding: 2px 6px;
+}
+
+.fase--noite .lua {
+  color: #c8d4e8;
+  text-shadow: 0 0 36px rgba(140, 170, 220, 0.55);
+}
 
 .btn-dia {
   display: inline-flex;
