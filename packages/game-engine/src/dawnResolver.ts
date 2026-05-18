@@ -407,9 +407,9 @@ export function resolveDawn(input: DawnResolveInput): DawnResolveResult {
       const t = players[del.action.targetId]!;
       t.jailed = true;
       dPlayer.delegadoLastJailedId = del.action.targetId;
-      const reason = del.action.specialAction?.trim();
+      const reason = (del.action.justification ?? del.action.specialAction)?.trim();
       const msg = reason
-        ? `O Delegado ordenou a prisão de ${t.name}. Motivo: ${reason}.`
+        ? `O Delegado ordenou a prisão de ${t.name}.\nMotivo: ${reason}.`
         : `O Delegado ordenou a prisão de ${t.name}.`;
       pendingPublic.push({ round: input.round, type: "special", message: msg, timestamp: input.now });
       targetQueue.push({ playerId: del.action.targetId, message: TARGET_DELEGADO_JAILED });

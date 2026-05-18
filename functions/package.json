@@ -9,6 +9,7 @@
   "scripts": {
     "build": "npm --prefix .. run build -w folclore-game-engine && node esbuild.mjs",
     "typecheck": "tsc --noEmit",
+    "test:botchat": "tsx --test src/lib/botChat/botChat.test.ts src/lib/botChat/botChat.smoke.ts src/lib/botKnowledge/botKnowledge.test.ts",
     "serve": "npm run build && firebase emulators:start --only functions"
   },
   "dependencies": {
@@ -19,6 +20,7 @@
     "@types/node": "^22.19.19",
     "esbuild": "^0.24.0",
     "folclore-game-engine": "file:../packages/game-engine",
+    "tsx": "^4.19.2",
     "typescript": "^5.6.3"
   }
 }

@@ -35,6 +35,8 @@ export interface NightActionInput {
   action: string;
   targetId: string | null;
   specialAction: string | null;
+  /** Delegado: motivo público (espelha `specialAction` após normalização no backend). */
+  justification?: string | null;
 }
 
 export interface PublicLogEntry {

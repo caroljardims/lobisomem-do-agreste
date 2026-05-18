@@ -5,6 +5,7 @@ import { finalizeDay } from "../lib/finalize.js";
 import { canBeExpulsionVoteTarget, canSubmitExpulsionVote } from "../lib/playerVote.js";
 import { findPlayer, requireAuth } from "./shared.js";
 import { buildBotContext, getBotMessage } from "../lib/botChat/index.js";
+import { parseBotKnowledge } from "../lib/botKnowledge/merge.js";
 
 export const submitVote = onCall(async (req) => {
   requireAuth(req);
@@ -47,6 +48,7 @@ export const submitVote = onCall(async (req) => {
     name: me.name,
     type: "vote",
     text: `${String(me.name)} votou.`,
+    votesRound: round,
     createdAt: FieldValue.serverTimestamp(),
   });
 
@@ -71,10 +73,12 @@ export const sendChatMessage = onCall(async (req) => {
   const isDead = me.alive === false || Boolean(me.eliminated) || Boolean(me.expelled);
   if (isDead && !me.invoked) throw new HttpsError("failed-precondition", "Você não pode falar.");
 
+  const voteRoundChat = Number(roomSnap.data()!.votesRound ?? roomSnap.data()!.round ?? 1);
   await roomRef.collection("chat").add({
     playerId: me.id,
     name: me.name,
     text,
+    votesRound: voteRoundChat,
     createdAt: FieldValue.serverTimestamp(),
   });
 
@@ -106,15 +110,18 @@ export const sendChatMessage = onCall(async (req) => {
           return { playerId: String(x.playerId ?? ""), name: String(x.name ?? ""), text: String(x.text ?? "") };
         }).reverse();
       } catch { /* sem histórico */ }
-      const round = Number(roomSnap.data()!.round ?? 1);
+      const round = Number(roomSnap.data()!.votesRound ?? roomSnap.data()!.round ?? 1);
       const botoId = allPlayers.find((p) => secrets[p.id]?.role === "boto")?.id ?? null;
       const iaraId = allPlayers.find((p) => secrets[p.id]?.role === "iara")?.id ?? null;
       const padreId = allPlayers.find((p) => secrets[p.id]?.role === "padre")?.id ?? null;
+      const prow = allPlayers.find((p) => p.id === bot.id);
+      const kbRow = parseBotKnowledge(prow?.botKnowledge);
       const ctx = buildBotContext({
         selfPlayerId: bot.id,
         role,
         roundNumber: round,
         messageIndex: 0,
+        votesRoundDay: round,
         livingPlayers: livingRefs,
         chatHistory,
         publicLogThisDawn: [],
@@ -122,12 +129,18 @@ export const sendChatMessage = onCall(async (req) => {
         iaraPlayerId: iaraId,
         padrePlayerId: padreId,
         rng: Math.random,
+        neutralAlignment:
+          prow?.alignment === "moradores" || prow?.alignment === "criaturas"
+            ? prow.alignment
+            : null,
+        botKnowledge: kbRow,
       });
       const reply = getBotMessage(ctx, Math.random);
       await roomRef.collection("chat").add({
         playerId: bot.id,
         name: bot.name,
         text: reply,
+        votesRound: round,
         createdAt: FieldValue.serverTimestamp(),
       });
     } catch { /* reação do bot é best-effort */ }

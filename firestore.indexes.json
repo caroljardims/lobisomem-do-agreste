@@ -1,6 +1,14 @@
 {
   "indexes": [
     {
+      "collectionGroup": "chat",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "votesRound", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "gameHistory",
       "queryScope": "COLLECTION",
       "fields": [

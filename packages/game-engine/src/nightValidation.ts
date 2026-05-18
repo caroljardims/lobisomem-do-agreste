@@ -62,8 +62,12 @@ export function validateNightAction(
       return { ok: true };
     }
     if (submission.action === "jail" && submission.targetId) {
-      if (!submission.specialAction?.trim()) {
-        return { ok: false, error: "Motivo da prisão é obrigatório quando prende alguém." };
+      const reason = submission.specialAction?.trim() ?? "";
+      if (reason.length < 10) {
+        return {
+          ok: false,
+          error: "A justificativa precisa ter pelo menos 10 caracteres (aparece no Folhetim).",
+        };
       }
       if (last === submission.targetId) {
         return { ok: false, error: "Não pode prender a mesma pessoa em noites seguidas." };

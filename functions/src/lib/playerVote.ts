@@ -1,10 +1,5 @@
 /** Jogador que ainda pode receber voto de expulsão (vivo na cidade, ou invocado neste dia). */
-export function canBeExpulsionVoteTarget(p: {
-  alive?: unknown;
-  eliminated?: unknown;
-  expelled?: unknown;
-  invoked?: unknown;
-}): boolean {
+export function canBeExpulsionVoteTarget(p: Record<string, unknown>): boolean {
   if (Boolean(p.expelled)) return false;
   if (Boolean(p.invoked)) return true;
   if (p.alive === false) return false;
@@ -13,14 +8,7 @@ export function canBeExpulsionVoteTarget(p: {
 }
 
 /** Quem pode enviar voto de expulsão nesta rodada. */
-export function canSubmitExpulsionVote(p: {
-  alive?: unknown;
-  eliminated?: unknown;
-  expelled?: unknown;
-  invoked?: unknown;
-  seduced?: unknown;
-  jailed?: unknown;
-}): boolean {
+export function canSubmitExpulsionVote(p: Record<string, unknown>): boolean {
   if (Boolean(p.expelled)) return false;
   if (Boolean(p.seduced) || Boolean(p.jailed)) return false;
   if (Boolean(p.invoked)) return true;

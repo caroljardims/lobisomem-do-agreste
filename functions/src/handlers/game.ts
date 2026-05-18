@@ -12,6 +12,7 @@ import {
 import { maybeFinalizeNight } from "../lib/finalize.js";
 import { processBotNightActions } from "../lib/bots.js";
 import { ensurePlayerPrivateDoc } from "../lib/playerPrivateScore.js";
+import { emptyBotKnowledge } from "../lib/botKnowledge/types.js";
 import { requireAuth } from "./shared.js";
 
 export const createRoom = onCall(async (req) => {
@@ -159,6 +160,7 @@ export const startGame = onCall(async (req) => {
       isSpokesperson: p.id === spokespersonId,
       actionUsed: false,
       alignment: forcedMoradoresFive ? "moradores" : FieldValue.delete(),
+      ...(botIds.has(p.id) ? { botKnowledge: emptyBotKnowledge() } : {}),
     });
   }
 
@@ -376,6 +378,7 @@ export const restartGame = onCall(async (req) => {
       alignment: FieldValue.delete(),
       curupiraFiveMoradoresProtected: FieldValue.delete(),
       boitataFiveMoradoresInvestigated: FieldValue.delete(),
+      ...(Boolean(p.isBot) ? { botKnowledge: FieldValue.delete() } : {}),
     });
   }
 

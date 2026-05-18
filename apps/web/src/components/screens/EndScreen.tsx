@@ -36,6 +36,7 @@ export type EndScreenProps = {
   loreOpen: boolean;
   setLoreOpen: Dispatch<SetStateAction<boolean>>;
   allRoundVotes: Record<number, Record<string, string | null>>;
+  allRoundBotVoteReasons: Record<number, Record<string, string>>;
   allNightActions: Record<number, NightActionRow>;
   historyLoaded: boolean;
   isHost: boolean;
@@ -53,6 +54,7 @@ export function EndScreen({
   loreOpen,
   setLoreOpen,
   allRoundVotes,
+  allRoundBotVoteReasons,
   allNightActions,
   historyLoaded,
   isHost,
@@ -114,6 +116,16 @@ export function EndScreen({
   for (const p of players) {
     if (p.id) playerNameById[p.id] = p.name ?? p.id;
   }
+
+  const BOT_VOTE_REASON_PT: Record<string, string> = {
+    confirmed: "alvo confirmado / forçado pelo debug",
+    suspected: "lista de suspeitas",
+    traitor: "reagir a quem votou no bot",
+    random: "palpite / oposto provável",
+    self_defense: "defesa",
+    chaos: "caos (Sací)",
+    bras_troll: "caos (Brás)",
+  };
 
   const individualWins = Array.isArray(room.individualWins) ? [...room.individualWins] : [];
   individualWins.sort((a, b) => a.round - b.round || a.timestamp - b.timestamp);
@@ -200,6 +212,7 @@ export function EndScreen({
           Array.from({ length: totalRounds }, (_, i) => i + 1).map((r) => {
             const nightActions = allNightActions[r] ?? {};
             const roundVotes = allRoundVotes[r] ?? {};
+            const botReasonsThisRound = room.debug === true ? allRoundBotVoteReasons[r] ?? {} : {};
             const nightPublicEntries = publicLog.filter((e) => {
               if (e.round !== r) return false;
               const t = e.type ?? "";
@@ -308,6 +321,15 @@ export function EndScreen({
                           }
                         >
                           {voterName} <span className="chronicle-arrow">→</span> {targetName}
+                          {room.debug &&
+                            players.find((p) => p.id === voterId)?.isBot &&
+                            botReasonsThisRound[voterId] && (
+                              <span className="muted" style={{ display: "block", fontSize: "0.85em" }}>
+                                Bot {voterName} — razão do voto:{" "}
+                                {BOT_VOTE_REASON_PT[botReasonsThisRound[voterId] ?? ""] ??
+                                  botReasonsThisRound[voterId]}
+                              </span>
+                            )}
                         </p>
                       );
                     })}

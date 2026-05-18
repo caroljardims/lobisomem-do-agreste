@@ -140,12 +140,21 @@ export async function processBotNightActions(roomCode: string, round: number): P
       }
     }
 
-    const submission: NightActionInput = {
-      role: role as RoleId,
-      action,
-      targetId,
-      specialAction,
-    };
+    const submission: NightActionInput =
+      role === "delegado" && action === "jail" && targetId && specialAction
+        ? {
+            role: role as RoleId,
+            action,
+            targetId,
+            specialAction,
+            justification: specialAction,
+          }
+        : {
+            role: role as RoleId,
+            action,
+            targetId,
+            specialAction,
+          };
 
     await nightRef.set(
       { [actor.id]: submission, updatedAt: FieldValue.serverTimestamp() },

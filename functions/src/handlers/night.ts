@@ -8,12 +8,22 @@ import { processBotNightActions } from "../lib/bots.js";
 import { setNightSuspicion } from "../lib/playerPrivateScore.js";
 import { findPlayer, requireAuth } from "./shared.js";
 
+function sanitizeDelegadoJustification(raw: string | null | undefined): string | null {
+  if (raw == null) return null;
+  const t = String(raw)
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120);
+  return t.length ? t : null;
+}
+
 export const submitNightAction = onCall(async (req) => {
   requireAuth(req);
   const code = String(req.data?.roomCode ?? "").toUpperCase().trim();
   const action = String(req.data?.action ?? "");
   const targetId = (req.data?.targetId as string | null) ?? null;
-  const specialAction = (req.data?.specialAction as string | null) ?? null;
+  let specialAction = (req.data?.specialAction as string | null) ?? null;
+  const justificationRaw = req.data?.justification;
   if (!code) throw new HttpsError("invalid-argument", "Código inválido.");
 
   const roomRef = db.collection("rooms").doc(code);
@@ -33,12 +43,29 @@ export const submitNightAction = onCall(async (req) => {
     throw new HttpsError("failed-precondition", "Você já agiu ou não tem ação esta noite.");
   }
 
+  if (mySecret.role === "delegado") {
+    if (action === "jail" && targetId) {
+      specialAction = sanitizeDelegadoJustification(
+        justificationRaw != null && String(justificationRaw).trim() !== ""
+          ? String(justificationRaw)
+          : specialAction,
+      );
+    } else if (action === "pass" || (action === "jail" && !targetId)) {
+      specialAction = null;
+    }
+  }
+
   const submission: NightActionInput = {
     role: mySecret.role,
     action,
     targetId,
     specialAction,
   };
+
+  const nightActionDoc: NightActionInput & { justification?: string | null } =
+    mySecret.role === "delegado" && action === "jail" && targetId && submission.specialAction
+      ? { ...submission, justification: submission.specialAction }
+      : submission;
 
   if (mySecret.role === "mae_de_santo" && targetId) {
     const target = players.find((p) => p.id === targetId);
@@ -102,7 +129,7 @@ export const submitNightAction = onCall(async (req) => {
   const nightRef = roomRef.collection("nightActions").doc(String(round));
   await nightRef.set(
     {
-      [me.id]: submission,
+      [me.id]: nightActionDoc,
       updatedAt: FieldValue.serverTimestamp(),
     },
     { merge: true },

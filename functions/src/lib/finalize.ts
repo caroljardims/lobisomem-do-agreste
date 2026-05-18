@@ -9,6 +9,7 @@ import {
   checkCollectiveWinDetailed,
   collectiveWinChronicleMessagePt,
   normalizeGeniInvestigatedTargets,
+  isCreatureRole,
 } from "folclore-game-engine";
 import type { RoleId } from "folclore-game-engine";
 import { db } from "./db.js";
@@ -17,10 +18,39 @@ import { finalizeMvpLedgerIfNeeded } from "./endGameScoring.js";
 import { grantAldeaoObjectiveIfMoradoresWon, grantObjectiveMvp } from "./playerPrivateScore.js";
 import { scoreBrasRoundTease, scoreMvpAtDawn, scoreMvpVotesAfterDay } from "./mvpDawnAndVoteScoring.js";
 import { beginSaciGorroOffer, runPostExpulsionTail } from "./saciGorro.js";
-import { buildBotContext, getBotMessagesForDayOpen } from "./botChat/index.js";
+import { buildBotContext, getBotSegmentsForDayOpen } from "./botChat/index.js";
+import { mergeBotKnowledgeFromNightResolve } from "./botKnowledge/applyFromNightResolve.js";
+import { analyzePriorRoundSemanticChat } from "./botKnowledge/analyzeChat.js";
+import type { ChatSemanticIngestRow } from "./botKnowledge/analyzeChat.js";
+import { appendVoteRound, parseBotKnowledge, promoteSuspects, pruneKnowledgeToLiving } from "./botKnowledge/merge.js";
+import { selectVoteTarget } from "./botKnowledge/selectVoteTarget.js";
+import type { BotKnowledgeSnapshot } from "./botKnowledge/types.js";
+import {
+  stringifyBotKnowledgeFirestore,
+  mergeBotsVotedAgainstMeFromVoteDoc,
+  pruneAllBotsKnowledge,
+  bumpMistakeIfExpelledAllyBotPerspective,
+  hydrateKnowledgeMapFromPlayerRows,
+} from "./botKnowledge/dayMerge.js";
+import { canBeExpulsionVoteTarget } from "./playerVote.js";
 
 type LoadedPlayer = Awaited<ReturnType<typeof loadPlayers>>[number];
 type SecretsMap = Awaited<ReturnType<typeof loadSecrets>>;
+type NightKbSecrets = Record<
+  string,
+  { role: RoleId; side: import("folclore-game-engine").Side } | undefined
+>;
+
+const VOTES_DOC_META = new Set(["updatedAt", "botVoteReasons"]);
+
+function dawnStateExpulsionEligible(st: PlayerDawnState): boolean {
+  return canBeExpulsionVoteTarget({
+    alive: st.alive,
+    eliminated: st.eliminated,
+    expelled: st.expelled,
+    invoked: st.invoked,
+  });
+}
 
 function buildWinPlayerSnapshots(players: LoadedPlayer[], secrets: SecretsMap): Record<string, WinPlayerSnapshot> {
   const winPlayers: Record<string, WinPlayerSnapshot> = {};
@@ -284,6 +314,170 @@ export async function finalizeNight(roomCode: string, round: number) {
     geniInvestigatedIds,
   });
 
+  /* --- Bots: atualiza saber pela noite / chat anterior e já deposita votos no doc da rodada. --- */
+  const botIdNight = new Set(players.filter((p) => Boolean(p.isBot)).map((p) => p.id));
+  const kbByBotId = new Map<string, BotKnowledgeSnapshot>();
+  for (const bid of botIdNight) {
+    kbByBotId.set(bid, parseBotKnowledge(players.find((p) => p.id === bid)?.botKnowledge));
+  }
+  const playerRowsById = new Map<string, LoadedPlayer>();
+  for (const p of players) playerRowsById.set(p.id, p);
+
+  mergeBotKnowledgeFromNightResolve({
+    round,
+    dawnPlayersBefore: dawnPlayers,
+    resPlayersAfter: res.players,
+    nightActions,
+    secrets: secrets as NightKbSecrets,
+    playerRowsById: playerRowsById as Map<string, Record<string, unknown> & { id: string; alignment?: string }>,
+    botIds: botIdNight,
+    geniPid,
+    geniInvestigatedIds,
+    privateLogNew: res.privateLog,
+    kbByBotId,
+  });
+
+  const livingNightIds = new Set(
+    Object.entries(res.players)
+      .filter(([, st]) => st.alive && !st.eliminated && !st.expelled)
+      .map(([id]) => id),
+  );
+  const surviveBotsNight = new Set([...botIdNight].filter((id) => livingNightIds.has(id)));
+
+  if (round > 1) {
+    let chatRowsAnalyze: ChatSemanticIngestRow[] = [];
+    try {
+      const chatPri = await roomRef.collection("chat").orderBy("createdAt", "desc").limit(120).get();
+      chatRowsAnalyze = chatPri.docs.map((d) => {
+        const x = d.data() as Record<string, unknown>;
+        const vrRaw = x.votesRound;
+        const votesRoundParsed = typeof vrRaw === "number" ? vrRaw : Number(vrRaw ?? NaN);
+        const sk = x.semanticKind;
+        return {
+          votesRound: Number.isFinite(votesRoundParsed) ? votesRoundParsed : undefined,
+          semanticKind:
+            sk === "accuse" || sk === "defend" || sk === "agree"
+              ? sk
+              : undefined,
+          semanticTargetId:
+            typeof x.semanticTargetId === "string" ? x.semanticTargetId : null,
+        };
+      });
+    } catch {
+      const chatPri = await roomRef.collection("chat").limit(120).get();
+      chatRowsAnalyze = chatPri.docs.map((d) => {
+        const x = d.data() as Record<string, unknown>;
+        const vrRaw = x.votesRound;
+        const votesRoundParsed = typeof vrRaw === "number" ? vrRaw : Number(vrRaw ?? NaN);
+        const sk = x.semanticKind;
+        return {
+          votesRound: Number.isFinite(votesRoundParsed) ? votesRoundParsed : undefined,
+          semanticKind:
+            sk === "accuse" || sk === "defend" || sk === "agree"
+              ? sk
+              : undefined,
+          semanticTargetId:
+            typeof x.semanticTargetId === "string" ? x.semanticTargetId : null,
+        };
+      });
+    }
+    analyzePriorRoundSemanticChat(round - 1, chatRowsAnalyze, kbByBotId, surviveBotsNight);
+  }
+
+  for (const bid of botIdNight) {
+    const k0 = kbByBotId.get(bid);
+    if (!k0 || !livingNightIds.has(bid)) continue;
+    const nextK = pruneKnowledgeToLiving(livingNightIds, k0);
+    promoteSuspects(nextK);
+    kbByBotId.set(bid, nextK);
+  }
+
+  const rngVN = Math.random;
+  const aliveLivNight = Object.entries(res.players)
+    .map(([id, state]) => ({ id, state }))
+    .filter(({ state }) => state.alive && !state.eliminated && !state.expelled);
+  const humanNightCt = aliveLivNight.filter(({ id }) => !botIdNight.has(id)).length;
+  const debugVoteMapNight = (room.debugBotVoteTargets as Record<string, string> | undefined) ?? {};
+  const botDbgReasonNight: Record<string, string> = {};
+  const botVotesForBatch: Record<string, string | null> = {};
+
+  for (const { id: voterId, state: vst } of aliveLivNight) {
+    if (!botIdNight.has(voterId) || vst.seduced || vst.jailed) continue;
+    const kb = kbByBotId.get(voterId);
+    if (!kb || !livingNightIds.has(voterId)) continue;
+    const roleV = secrets[voterId]?.role;
+    if (!roleV) continue;
+    const prowV = players.find((pl) => pl.id === voterId);
+    const alignV =
+      prowV?.alignment === "moradores" || prowV?.alignment === "criaturas"
+        ? prowV.alignment
+        : undefined;
+    const voterEnchantedNight = Boolean(vst.enchanted);
+
+    const canVotePidNight = (targetId: string, tst: PlayerDawnState) => {
+      if (!dawnStateExpulsionEligible(tst)) return false;
+      const tr = secrets[targetId]?.role;
+      if (voterEnchantedNight && tr && isCreatureRole(tr)) return false;
+      return true;
+    };
+
+    const lawfulIdsNight = aliveLivNight
+      .filter(({ id }) => id !== voterId)
+      .filter(({ id, state }) => canVotePidNight(id, state))
+      .map((x) => x.id);
+
+    if (humanNightCt === 0) {
+      appendVoteRound(kb, round, null, "random");
+      botVotesForBatch[voterId] = null;
+      continue;
+    }
+
+    const forcedTargetDbg = room.debug === true ? debugVoteMapNight[voterId] : undefined;
+    const forcedOkDbg = Boolean(forcedTargetDbg && lawfulIdsNight.includes(forcedTargetDbg));
+    if (forcedOkDbg) {
+      appendVoteRound(kb, round, forcedTargetDbg!, "confirmed");
+      botVotesForBatch[voterId] = forcedTargetDbg!;
+      if (room.debug === true) botDbgReasonNight[voterId] = "confirmed";
+      continue;
+    }
+
+    if (roleV === "bras_cubas" && rngVN() < 0.3) {
+      const humanLawful = lawfulIdsNight.filter((id) => !botIdNight.has(id));
+      let tbras: string | null = null;
+      if (humanLawful.length > 0 && rngVN() < 0.5) {
+        tbras = humanLawful[Math.floor(rngVN() * humanLawful.length)]!;
+      } else if (lawfulIdsNight.length > 0) {
+        tbras = lawfulIdsNight[Math.floor(rngVN() * lawfulIdsNight.length)]!;
+      }
+      appendVoteRound(kb, round, tbras, "bras_troll");
+      botVotesForBatch[voterId] = tbras;
+      if (room.debug === true) botDbgReasonNight[voterId] = "bras_troll";
+      continue;
+    }
+
+    const pickedNv = selectVoteTarget({
+      rng: rngVN,
+      voterId,
+      kb,
+      voterRole: roleV,
+      voterAlign: alignV,
+      aliveEntries: aliveLivNight,
+      canTarget: (tid, tst) => tid !== voterId && canVotePidNight(tid, tst),
+      saciChaos: roleV === "saci",
+    });
+    appendVoteRound(kb, round, pickedNv.targetId, pickedNv.reason);
+    botVotesForBatch[voterId] = pickedNv.targetId;
+    if (room.debug === true) botDbgReasonNight[voterId] = pickedNv.reason;
+  }
+
+  const votesNightPatch: Record<string, unknown> = {
+    ...botVotesForBatch,
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+  if (room.debug === true && Object.keys(botDbgReasonNight).length > 0) {
+    votesNightPatch.botVoteReasons = botDbgReasonNight;
+  }
+
   const batch = db.batch();
   for (const [pid, pl] of Object.entries(res.players)) {
     const ref = roomRef.collection("players").doc(pid);
@@ -310,6 +504,11 @@ export async function finalizeNight(roomCode: string, round: number) {
       upd.iaraSeductionBlockedThroughRound = pl.iaraSeductionBlockedThroughRound;
     } else {
       upd.iaraSeductionBlockedThroughRound = FieldValue.delete();
+    }
+    const prowNight = players.find((p) => p.id === pid);
+    if (prowNight?.isBot) {
+      const bk = kbByBotId.get(pid);
+      if (bk) upd.botKnowledge = stringifyBotKnowledgeFirestore(bk);
     }
     batch.update(ref, upd);
   }
@@ -408,6 +607,10 @@ export async function finalizeNight(roomCode: string, round: number) {
     createdAt: FieldValue.serverTimestamp(),
   });
 
+  if (Object.keys(botVotesForBatch).length > 0) {
+    batch.set(roomRef.collection("votes").doc(String(round)), votesNightPatch, { merge: true });
+  }
+
   await batch.commit();
 
   const blockedActorIds = new Set(players.filter((p) => Boolean(p.blockedNextNight)).map((p) => p.id));
@@ -497,17 +700,36 @@ export async function finalizeNight(roomCode: string, round: number) {
         isBot: Boolean(pl.isBot),
       }));
 
-    let chatHistory: Array<{ playerId: string; name: string; text: string; type?: string }> = [];
+    let chatHistory: Array<{
+      playerId: string;
+      name: string;
+      text: string;
+      type?: string;
+      votesRound?: number;
+      semanticKind?: "accuse" | "defend" | "agree";
+      semanticTargetId?: string | null;
+    }> = [];
     try {
       const chatSnap = await roomRef.collection("chat").orderBy("createdAt", "desc").limit(40).get();
       chatHistory = chatSnap.docs
         .map((d) => {
           const x = d.data() as Record<string, unknown>;
+          const sk = x.semanticKind;
+          const semanticKindParsed =
+            sk === "accuse" || sk === "defend" || sk === "agree"
+              ? (sk as "accuse" | "defend" | "agree")
+              : undefined;
+          const vrRaw = x.votesRound;
+          const votesRoundN = typeof vrRaw === "number" ? vrRaw : Number(vrRaw ?? NaN);
           return {
             playerId: String(x.playerId ?? ""),
             name: String(x.name ?? ""),
             text: String(x.text ?? ""),
             type: x.type as string | undefined,
+            votesRound: Number.isFinite(votesRoundN) ? votesRoundN : undefined,
+            semanticKind: semanticKindParsed,
+            semanticTargetId:
+              typeof x.semanticTargetId === "string" ? x.semanticTargetId : null,
           };
         })
         .reverse();
@@ -515,11 +737,22 @@ export async function finalizeNight(roomCode: string, round: number) {
       const chatSnap = await roomRef.collection("chat").limit(40).get();
       chatHistory = chatSnap.docs.map((d) => {
         const x = d.data() as Record<string, unknown>;
+        const sk = x.semanticKind;
+        const semanticKindParsed =
+          sk === "accuse" || sk === "defend" || sk === "agree"
+            ? (sk as "accuse" | "defend" | "agree")
+            : undefined;
+        const vrRaw = x.votesRound;
+        const votesRoundN = typeof vrRaw === "number" ? vrRaw : Number(vrRaw ?? NaN);
         return {
           playerId: String(x.playerId ?? ""),
           name: String(x.name ?? ""),
           text: String(x.text ?? ""),
           type: x.type as string | undefined,
+          votesRound: Number.isFinite(votesRoundN) ? votesRoundN : undefined,
+          semanticKind: semanticKindParsed,
+          semanticTargetId:
+            typeof x.semanticTargetId === "string" ? x.semanticTargetId : null,
         };
       });
     }
@@ -532,15 +765,16 @@ export async function finalizeNight(roomCode: string, round: number) {
     const iaraPlayerId = players.find((pl) => secrets[pl.id]?.role === "iara")?.id ?? null;
     const padrePlayerId = players.find((pl) => secrets[pl.id]?.role === "padre")?.id ?? null;
 
-    // Embaralha bots para que a ordem de fala varie
     const shuffledBots = [...botPlayers].sort(() => rng() - 0.5);
     for (const chatBot of shuffledBots) {
       const role = secrets[chatBot.id]?.role ?? "aldeao";
+      const prowChat = players.find((pl) => pl.id === chatBot.id);
       const ctxBase = buildBotContext({
         selfPlayerId: chatBot.id,
         role,
         roundNumber: round,
         messageIndex: 0,
+        votesRoundDay: round,
         livingPlayers: livingRefs,
         chatHistory,
         publicLogThisDawn,
@@ -548,56 +782,54 @@ export async function finalizeNight(roomCode: string, round: number) {
         iaraPlayerId,
         padrePlayerId,
         rng,
+        neutralAlignment:
+          prowChat?.alignment === "moradores" || prowChat?.alignment === "criaturas"
+            ? prowChat.alignment
+            : null,
+        botKnowledge: kbByBotId.get(chatBot.id),
       });
-      const messages = getBotMessagesForDayOpen(ctxBase, rng);
-      for (const text of messages) {
-        await roomRef.collection("chat").add({
+      const segmentsDn = getBotSegmentsForDayOpen(ctxBase, rng);
+      for (const seg of segmentsDn) {
+        const chatPayload: Record<string, unknown> = {
           playerId: chatBot.id,
           name: chatBot.name,
-          text,
+          text: seg.text,
+          votesRound: round,
           createdAt: FieldValue.serverTimestamp(),
-        });
-        chatHistory = [...chatHistory, { playerId: chatBot.id, name: chatBot.name, text }];
+        };
+        if (seg.semanticKind) chatPayload.semanticKind = seg.semanticKind;
+        if (seg.semanticTargetId) chatPayload.semanticTargetId = seg.semanticTargetId;
+        await roomRef.collection("chat").add(chatPayload);
+        chatHistory = [
+          ...chatHistory,
+          {
+            playerId: chatBot.id,
+            name: chatBot.name,
+            text: seg.text,
+            votesRound: round,
+            semanticKind: seg.semanticKind,
+            semanticTargetId: seg.semanticTargetId ?? null,
+          },
+        ];
       }
     }
   }
-  if (botIds.size > 0) {
-    const aliveNow = Object.values(res.players).filter((p) => p.alive && !p.eliminated && !p.expelled);
-    const aliveHumans = aliveNow.filter((p) => !botIds.has(p.id));
-    const botVotes: Record<string, string | null> = {};
-    const debugVoteMap = (room.debugBotVoteTargets as Record<string, string> | undefined) ?? {};
-    for (const p of aliveNow) {
-      if (!botIds.has(p.id) || p.seduced || p.jailed) continue;
-      const targets = aliveHumans.length > 0 ? aliveNow.filter((t) => t.id !== p.id) : [];
-      const forcedTarget = debugVoteMap[p.id];
-      const forceOk =
-        room.debug === true && forcedTarget && targets.some((t) => t.id === forcedTarget);
-      botVotes[p.id] =
-        targets.length === 0
-          ? null
-          : forceOk
-            ? forcedTarget!
-            : targets[Math.floor(Math.random() * targets.length)].id;
+  if (Object.keys(botVotesForBatch).length > 0) {
+    const nameByIdChat = new Map(players.map((pl) => [pl.id, String(pl.name ?? pl.id)]));
+    const voteAnnounceBatch = db.batch();
+    for (const voterId of Object.keys(botVotesForBatch)) {
+      const voterName = nameByIdChat.get(voterId) ?? voterId;
+      const crefDn = roomRef.collection("chat").doc();
+      voteAnnounceBatch.set(crefDn, {
+        playerId: voterId,
+        name: voterName,
+        text: "votou.",
+        type: "vote",
+        votesRound: round,
+        createdAt: FieldValue.serverTimestamp(),
+      });
     }
-    if (Object.keys(botVotes).length > 0) {
-      await roomRef.collection("votes").doc(String(round)).set(
-        { ...botVotes, updatedAt: FieldValue.serverTimestamp() },
-        { merge: true },
-      );
-      const nameById = new Map(players.map((pl) => [pl.id, String(pl.name ?? pl.id)]));
-      const voteChatBatch = db.batch();
-      for (const voterId of Object.keys(botVotes)) {
-        const voterName = nameById.get(voterId) ?? voterId;
-        const cref = roomRef.collection("chat").doc();
-        voteChatBatch.set(cref, {
-          playerId: voterId,
-          name: voterName,
-          text: "votou.",
-          createdAt: FieldValue.serverTimestamp(),
-        });
-      }
-      await voteChatBatch.commit();
-    }
+    await voteAnnounceBatch.commit();
   }
 
   const aliveAfterDawn = Object.values(res.players).filter((p) => p.alive && !p.eliminated && !p.expelled);
@@ -709,8 +941,14 @@ export async function finalizeDay(roomCode: string, round: number) {
 
   const votesRaw = voteSnap.data() ?? {};
   const votes = Object.entries(votesRaw)
-    .filter(([k]) => k !== "updatedAt")
+    .filter(([k]) => !VOTES_DOC_META.has(k))
     .map(([voterId, targetId]) => ({ voterId, targetId: (targetId as string) || null }));
+
+  const voteRecord: Record<string, string | null | undefined> = {};
+  for (const [k, v] of Object.entries(votesRaw)) {
+    if (VOTES_DOC_META.has(k)) continue;
+    voteRecord[k] = v == null || v === "" ? null : String(v);
+  }
 
   const roleByPlayerId: Record<string, RoleId> = {};
   for (const p of players) {
@@ -732,6 +970,57 @@ export async function finalizeDay(roomCode: string, round: number) {
     if (tallyRole === "saci" && tallyPlayer && !tallyPlayer.actionUsed) {
       await beginSaciGorroOffer(roomCode, round, tally.expelledId, players);
       return;
+    }
+  }
+
+  const botIdSetFinalize = new Set(players.filter((p) => Boolean(p.isBot)).map((p) => p.id));
+  const kbAfterDay = hydrateKnowledgeMapFromPlayerRows({
+    players,
+    botIds: botIdSetFinalize,
+  });
+  mergeBotsVotedAgainstMeFromVoteDoc(voteRecord, kbAfterDay, botIdSetFinalize);
+
+  const livingAfterDay = new Set(
+    players.filter((p) => p.alive !== false && !p.eliminated && !p.expelled).map((p) => p.id),
+  );
+  const expelledEarly = tally.expelledId ?? null;
+  if (expelledEarly) livingAfterDay.delete(expelledEarly);
+  pruneAllBotsKnowledge(
+    livingAfterDay,
+    kbAfterDay,
+    new Set([...botIdSetFinalize].filter((id) => livingAfterDay.has(id))),
+  );
+
+  if (expelledEarly) {
+    const expRole = secrets[expelledEarly]?.role;
+    const xp = players.find((p) => p.id === expelledEarly);
+    if (expRole && xp) {
+      const botsMeta = new Map<
+        string,
+        { role: RoleId; alignment?: "moradores" | "criaturas" | null }
+      >();
+      for (const bid of botIdSetFinalize) {
+        const meta = secrets[bid];
+        const prow = players.find((p) => p.id === bid);
+        if (!meta) continue;
+        botsMeta.set(bid, {
+          role: meta.role,
+          alignment:
+            prow?.alignment === "moradores" || prow?.alignment === "criaturas"
+              ? prow.alignment
+              : null,
+        });
+      }
+      bumpMistakeIfExpelledAllyBotPerspective({
+        expelledId: expelledEarly,
+        expelledRole: expRole,
+        expelledAlign:
+          xp.alignment === "moradores" || xp.alignment === "criaturas" ? xp.alignment : null,
+        kbByBotId: kbAfterDay,
+        survivingBotIds: new Set([...botIdSetFinalize].filter((id) => livingAfterDay.has(id))),
+        botsMeta,
+        voteRound,
+      });
     }
   }
 
@@ -774,13 +1063,18 @@ export async function finalizeDay(roomCode: string, round: number) {
       createdAt: FieldValue.serverTimestamp(),
     });
   }
+
+  for (const bid of botIdSetFinalize) {
+    if (!livingAfterDay.has(bid)) continue;
+    const kbRow = kbAfterDay.get(bid);
+    if (!kbRow) continue;
+    batch.update(roomRef.collection("players").doc(bid), {
+      botKnowledge: stringifyBotKnowledgeFirestore(kbRow),
+    });
+  }
+
   await batch.commit();
 
-  const voteRecord: Record<string, string | null | undefined> = {};
-  for (const [k, v] of Object.entries(votesRaw)) {
-    if (k === "updatedAt") continue;
-    voteRecord[k] = v == null || v === "" ? null : String(v);
-  }
   if (tally.expelledId) {
     await runPostExpulsionTail(roomCode, round, tally.expelledId, voteRecord, brasId);
   } else {

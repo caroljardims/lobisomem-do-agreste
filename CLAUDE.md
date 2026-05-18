@@ -623,6 +623,47 @@ Vitória por lua cheia: após um amanhecer, se `round > maxRounds` na verificaç
 
 # To Do
 
+## Pendentes
+
+####Críticos (corrija antes de escalar)
+
+1. Race condition em maybeFinalizeNight — sem transação entre a leitura de nightPendingRoles/nightReadyPlayerIds e a chamada de finalizeNight. Com múltiplos jogadores agindo simultâneamente, finalizeNight pode ser chamada duas vezes: kills e MVP concedidos em dobro.
+
+2. participantUids pode ter strings vazias — em endGameScoring.ts:138, jogadores com falha de auth geram uid: "". Esses valores entram em participantUids, e a Firestore rule que valida request.auth.uid in resource.data.participantUids falha silenciosamente — jogador não consegue ler o próprio histórico.
+
+3. finalizeNight não é idempotente — se batch.commit() falhar no meio, retry executa tudo novamente: bots ganham MVP múltiplas vezes, flags são escritas em cima de estado já parcialmente aplicado.
+
+4. Brás Cubas ressurge com status inválido — brasContinueChoice em dayActions.ts:65 reseta wolfBiteUsed, geniCharmUsed etc., mas não reseta silenced, enchanted, seduced, jailed, protected. Se Brás estava silenciado ao ser expulso, volta silenciado.
+
+#### Altos
+
+5. geniInvestigatedTargets duplica em race — bot Geni e humano Geni usam arrayUnion independentemente; se ambos agirem em paralelo num edge case, mesmo alvo entra duas vezes.
+
+6. nightReadyPlayerIds não é limpo em retry — se finalizeNight falhar, o array acumula IDs. No retry, o check aliveIds.every(id => readyIds.has(id)) pode ter falsos positivos.
+
+7. Qualquer usuário autenticado lê qualquer sala — firestore.rules:56 tem allow read: if isAuthed() para /rooms/{roomCode}. Jogador eliminado continua lendo revealedRoles e o estado completo da partida.
+
+8. Chat sem rate limiting — sendChatMessage em day.ts não tem limite de frequência por jogador. Possível spam e bloat no Firestore.
+
+#### Médios
+
+9. AnyPlayer como Record<string, unknown> — causa os erros TS2559 conhecidos em day.ts e debug/actions.ts. Mais importante: p.alive, p.role etc. são unknown, então comparações como p.alive === false compilam sem garantia nenhuma.
+
+10. Erros silenciosos com .catch(console.error) — em finalize.ts:197,413, se grantAldeaoObjectiveIfMoradoresWon falhar, o jogo continua sem conceder pontos. Sem retry, sem alerta.
+
+11. Debug handlers não validam room.debug === true — assertDebugHost valida o host, mas não a flag da sala. Se a flag sumir, comandos de debug continuam funcionando em qualquer sala.
+
+12. type: "chronicle_end" não está no union de PublicLogEntry — finalize.ts:189 escreve esse valor, mas packages/game-engine/src/types.ts:40 não o declara. O frontend deserializa sem erro mas o TypeScript não protege.
+
+#### Baixos
+
+Firebase Storage aceita image/svg+xml (deveria ter whitelist)
+Índice do privateLog criado on-demand em vez de declarado em firestore.indexes.json
+Chat de bots: `functions/src/lib/botChat/` (árvores de comportamento + frases). Mensagens são geradas em `finalizeNight` na mesma invocação; atrasos escalonados (15–120s) exigiriam Cloud Tasks ou infra similar (fase 2).
+
+
+Prioridade imediata: os problemas 1–4 podem acontecer em produção hoje com jogadores reais, especialmente o #1 (race condition) em mesas com 7+ jogadores onde a janela de ação simultânea é maior.
+
 ## Concluído
 
 - ✓ Gorro Vermelho — intercepta expulsão do Saci em `finalizeDay`; modal privado 60s; `submitSaciGorroChoice` / `expireSaciGorro` / `expireSaciGorroTask`; substituto expulso com anúncio normal
@@ -634,7 +675,7 @@ Vitória por lua cheia: após um amanhecer, se `round > maxRounds` na verificaç
 - ✓ Fase do dia — parecer da noite — exibe sempre o bloco; mostra "ninguém foi eliminado" se sem mortes; lista quem está fora do jogo
 - ✓ Feedback dos botões — ações noturnas e do dia têm estado de carregamento e confirmação (✓ Ação registrada); botão fica inativo após envio
 - ✓ Chat — altura e design — `.chat-card` com `min-height: 160px / max-height: 320px`; mensagens de voto em estilo muted menor
-- ✓ Bots interativos no chat — ao início do dia, um bot aleatório envia frase temática do banco de frases (`BOT_PHRASES` em `finalizeNight`)
+- ✓ Bots interativos no chat — ao início do dia, um bot aleatório pode enviar uma ou mais mensagens via `functions/src/lib/botChat` (comportamento por lado/papel, pools genéricos e exclusivos, `npm run test:botchat` em `functions/`)
 - ✓ Toque de recolher — após votação (com expulsão, empate ou sem expulsão), jogo **sempre** pausa em `status: "day"` com `pendingNightStart: true`; anfitrião clica "Toque de recolher" → `startNight` → noite começa; expulsão ou mensagem de empate exibida no Folhetim durante a pausa
 - ✓ Toque da alvorada — jogadores sem ação noturna confirmam prontidão via botão "Toque da alvorada" (`markNightReady`); amanhecer só processa quando todos os vivos estão em `nightReadyPlayerIds`
 - ✓ Mensagem de empate no Folhetim — quando votação termina em empate, Folhetim exibe *"A votação terminou em empate. Ninguém foi expulso."* (type: expulsion)

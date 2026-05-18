@@ -123,7 +123,12 @@ describe("validateNightAction", () => {
     const v = validateNightAction(
       { round: 3, expectedRole: "delegado", priorInvestigationTargetIds: ["x"] },
       p,
-      { role: "delegado", action: "jail", targetId: "x", specialAction: "motivo" },
+      {
+        role: "delegado",
+        action: "jail",
+        targetId: "x",
+        specialAction: "Justificativa com mais de dez caracteres.",
+      },
     );
     expect(v.ok).toBe(true);
   });
@@ -133,19 +138,31 @@ describe("validateNightAction", () => {
     const v = validateNightAction(
       { round: 2, expectedRole: "delegado" },
       p,
-      { role: "delegado", action: "jail", targetId: "x", specialAction: "motivo válido" },
+      { role: "delegado", action: "jail", targetId: "x", specialAction: "motivo válido com mais de dez caracteres" },
     );
     expect(v.ok).toBe(false);
   });
 
-  it("Delegado: prisão exige motivo", () => {
+  it("Delegado: prisão exige justificativa com pelo menos 10 caracteres", () => {
     const p = player({ role: "delegado", side: "morador" });
-    const v = validateNightAction(
+    const vShort = validateNightAction(
+      { round: 2, expectedRole: "delegado" },
+      p,
+      { role: "delegado", action: "jail", targetId: "x", specialAction: "curta" },
+    );
+    expect(vShort.ok).toBe(false);
+    const vSpaces = validateNightAction(
       { round: 2, expectedRole: "delegado" },
       p,
       { role: "delegado", action: "jail", targetId: "x", specialAction: "  " },
     );
-    expect(v.ok).toBe(false);
+    expect(vSpaces.ok).toBe(false);
+    const vOk = validateNightAction(
+      { round: 2, expectedRole: "delegado" },
+      p,
+      { role: "delegado", action: "jail", targetId: "x", specialAction: "1234567890" },
+    );
+    expect(vOk.ok).toBe(true);
   });
 
   it("Cartomante pode passar na 1ª noite", () => {

@@ -39,6 +39,7 @@ import { useRoomDocument } from "./hooks/useRoomDocument.js";
 import { useAllSecrets } from "./hooks/useAllSecrets.js";
 import { isLocalDebug } from "./debug/isLocalDebug.js";
 import { DEBUG_ROLE_LABELS } from "./debug/roleOptions.js";
+import { NIGHT_ROLE_ACTION_SECONDS } from "./lib/nightTurnConstants.js";
 import { mapCallableError } from "./lib/callableErrors.js";
 import { canBeExpulsionVoteTarget, canSubmitExpulsionVote } from "./lib/playerVote.js";
 import type { PlayerDoc, RoomDoc, View } from "./types.js";
@@ -88,7 +89,10 @@ export function App() {
   const privateLog = usePrivateLog(roomCode, playerId);
   const chat = useChat(roomCode, room?.status === "day");
   const dayRoundVotes = useDayVotes(roomCode, room);
-  const { allRoundVotes, allNightActions, historyLoaded } = useGameEndHistory(roomCode, room);
+  const { allRoundVotes, allRoundBotVoteReasons, allNightActions, historyLoaded } = useGameEndHistory(
+    roomCode,
+    room,
+  );
   const [chatText, setChatText] = useState("");
   const [voteTarget, setVoteTarget] = useState<string>("");
   const [nightTarget, setNightTarget] = useState<string>("");
@@ -108,6 +112,9 @@ export function App() {
   );
   const [suspicionTarget, setSuspicionTarget] = useState("");
   const [suspicionSent, setSuspicionSent] = useState(false);
+  const [nightToast, setNightToast] = useState<string | null>(null);
+  const [delegadoJustifyInlineError, setDelegadoJustifyInlineError] = useState(false);
+  const [delegadoIntroDismissed, setDelegadoIntroDismissed] = useState(false);
 
   // Entry flow
   const [view, setView] = useState<View>("intro");
@@ -268,6 +275,53 @@ export function App() {
     },
     [playerId],
   );
+
+  useEffect(() => {
+    if (!roomCode || typeof sessionStorage === "undefined") return;
+    setDelegadoIntroDismissed(sessionStorage.getItem(`folhetim_delegado_night_intro_${roomCode}`) === "1");
+  }, [roomCode]);
+
+  useEffect(() => {
+    setDelegadoJustifyInlineError(false);
+  }, [nightTarget, nightSpecialAction, nightAction]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!roomCode) return;
+    if (room?.status !== "night" || myRole !== "delegado") return;
+    if (!room.nightPendingRoles?.includes("delegado")) return;
+    if (nightActionSent) return;
+    if ((room.round ?? 1) === 1 && !delegadoIntroDismissed) return;
+
+    const t = window.setTimeout(() => {
+      void run(
+        "submitNightAction",
+        { roomCode, action: "pass", targetId: null, specialAction: null },
+        "nightAction",
+      )
+        .then(() => {
+          setNightActionSent(true);
+          setNightToast("Tempo esgotado. Você passou a noite sem prender ninguém.");
+          window.setTimeout(() => setNightToast(null), 6000);
+        })
+        .catch(() => {});
+    }, NIGHT_ROLE_ACTION_SECONDS * 1000);
+
+    return () => window.clearTimeout(t);
+  }, [
+    room?.status,
+    room?.round,
+    room?.nightPendingRoles,
+    myRole,
+    nightActionSent,
+    roomCode,
+    delegadoIntroDismissed,
+    run,
+  ]);
+
+  useEffect(() => {
+    if (room?.status !== "night") setNightToast(null);
+  }, [room?.status]);
 
   const fillBots = useCallback(async () => {
     setErr(null);
@@ -697,6 +751,8 @@ export function App() {
           </div>
 
           <div className="intro-body">
+            <div className="intro-cordel-wrap">
+              <div className="intro-eyebrow">Anno I · N.º 1 — Bucaré, Sertão</div>
             <div className="intro-cordel" lang="pt-BR">
               <p>
                 Noite longa no sertão
@@ -737,6 +793,7 @@ export function App() {
                 <br />
                 Pr'outro mundo, que horrô!
               </p>
+            </div>
             </div>
             <p className="copy-muted">
               crie uma sala, divida o código com a turma e revele os segredos do
@@ -1046,7 +1103,7 @@ export function App() {
           />
         </Suspense>
       )}
-      <div className={`page${isDebugSession ? " page--debug" : ""}`}>
+      <div className={`page${isDebugSession ? " page--debug" : ""}${room?.status === "night" ? " fase--noite" : room?.status === "day" ? " fase--dia" : ""}`}>
       <div className="top-bar">
         <button type="button" className="back-link" onClick={leave}>
           ← sair
@@ -1230,16 +1287,24 @@ export function App() {
           )}
           {myRole && <p className="muted">Seu personagem: {ROLE_DISPLAY[myRole] ?? myRole}</p>}
 
-          {myRole && ROLE_LORE[myRole] && (
+          {myRole && ROLE_LORE[myRole] && (() => {
+            const meCard = players.find((p) => p.id === playerId);
+            const lado = meCard?.side ?? null;
+            const ladoLabel = lado === "criatura" ? "Criatura" : lado === "morador" ? "Morador" : lado === "neutro" ? "Neutro" : null;
+            return (
             <div className="role-story-card">
+              <div className="role-story-card-cabec">Folheto N.º 1 · Editora Bucaré</div>
               <button
                 type="button"
                 className="role-story-toggle"
                 onClick={() => setLoreOpen((v) => !v)}
               >
-                <span>História — {ROLE_DISPLAY[myRole] ?? myRole}</span>
+                <span>{ROLE_DISPLAY[myRole] ?? myRole}</span>
                 <span className="role-story-chevron">{loreOpen ? "▲" : "▼"}</span>
               </button>
+              {ladoLabel && (
+                <div className="role-story-lado" data-lado={lado}>— {ladoLabel} —</div>
+              )}
               {loreOpen && (
                 <div className="role-story-body">
                   <p className="role-story-location">Bucaré do Sertão, 1922.</p>
@@ -1247,7 +1312,8 @@ export function App() {
                 </div>
               )}
             </div>
-          )}
+            );
+          })()}
 
           {room.status === "night" && (() => {
             const meNight = players.find((p) => p.id === playerId);
@@ -1259,7 +1325,6 @@ export function App() {
             const targetPool = myRole === "mae_de_santo"
               ? players.filter((p) => p.eliminated && !p.expelled)
               : players.filter((p) => p.id !== playerId && p.alive !== false && !p.eliminated && !p.expelled);
-            const needsJailReason = myRole === "delegado" && nightAction === "jail";
             const delegadoPass = myRole === "delegado" && nightAction === "pass";
             const nightRolePass =
               nightAction === "pass" &&
@@ -1269,16 +1334,17 @@ export function App() {
                 myRole === "cartomante" ||
                 myRole === "boitata");
             const hideNightTarget = delegadoPass || nightRolePass;
+            const needsJailReason = myRole === "delegado" && !delegadoPass;
             let canSubmit = false;
             if (!anyPending) {
               if (delegadoPass || nightRolePass) canSubmit = true;
               else if (myRole === "delegado" && nightAction === "jail") {
-                canSubmit = !!nightTarget && !!nightSpecialAction?.trim();
+                canSubmit =
+                  !!nightTarget && (nightSpecialAction?.trim().length ?? 0) >= 10;
               } else {
                 canSubmit =
                   !!nightTarget &&
-                  (!needsAlignment || !!nightSpecialAction) &&
-                  (!needsJailReason || !!nightSpecialAction?.trim());
+                  (!needsAlignment || !!nightSpecialAction);
               }
             }
             const canMarkNightReady =
@@ -1313,8 +1379,56 @@ export function App() {
               !meNight.expelled &&
               (!myRoleIsPending || nightActionSent);
 
+            const delegadoIntroVisible =
+              myRoleIsPending &&
+              myRole === "delegado" &&
+              (room.round ?? 1) === 1 &&
+              !delegadoIntroDismissed;
+            const delegadoJailSelectedName =
+              nightTarget && myRole === "delegado" && nightAction === "jail"
+                ? players.find((p) => p.id === nightTarget)?.name ?? "esta pessoa"
+                : "";
+            const nightMissingTargetOnly =
+              !hideNightTarget && !nightTarget && !delegadoPass && !nightRolePass;
+            const delegadoJailNeedsMoreText =
+              myRole === "delegado" &&
+              nightAction === "jail" &&
+              Boolean(nightTarget) &&
+              (nightSpecialAction?.trim().length ?? 0) < 10;
+
             return (
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                {nightToast ? (
+                  <div className="night-flow-toast" role="status">
+                    {nightToast}
+                  </div>
+                ) : null}
+                {delegadoIntroVisible ? (
+                  <div className="delegado-night-intro-backdrop" role="dialog" aria-modal="true">
+                    <div className="delegado-night-intro-card">
+                      <h2 className="delegado-night-intro-title">👮 Sua vez, Delegado</h2>
+                      <p className="delegado-night-intro-body">
+                        Você pode prender um suspeito esta noite.
+                      </p>
+                      <p className="delegado-night-intro-body">
+                        Se prender alguém, escreva uma justificativa — ela vai aparecer no Folhetim amanhã.
+                      </p>
+                      <p className="muted delegado-night-intro-timer-note">
+                        Depois de continuar, você terá {NIGHT_ROLE_ACTION_SECONDS}s para enviar prender ou passar.
+                      </p>
+                      <button
+                        type="button"
+                        className="chip-btn delegado-night-intro-btn"
+                        onClick={() => {
+                          sessionStorage.setItem(`folhetim_delegado_night_intro_${roomCode}`, "1");
+                          setDelegadoIntroDismissed(true);
+                        }}
+                      >
+                        Entendi
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
                 {showCangConsult && (
                   <div className="game-card" style={{ alignSelf: "stretch" }}>
                     <p className="muted" style={{ marginTop: 0 }}>
@@ -1405,20 +1519,14 @@ export function App() {
                           : "Sem alvo esta noite — sua vez será concluída e a noite poderá seguir."}
                       </p>
                     )}
-                    {needsJailReason && (
-                      <>
-                        <label>Motivo da prisão (será lido publicamente)</label>
-                        <input
-                          type="text"
-                          placeholder="ex: comportamento suspeito na última noite"
-                          value={nightSpecialAction ?? ""}
-                          onChange={(e) => setNightSpecialAction(e.target.value)}
-                          maxLength={120}
-                        />
-                      </>
-                    )}
                     {!hideNightTarget && (
-                      <>
+                      <div
+                        className={
+                          myRole === "delegado" && nightAction === "jail"
+                            ? "delegado-night-action-scroll"
+                            : undefined
+                        }
+                      >
                         <label>Alvo</label>
                         <select value={nightTarget} onChange={(e) => setNightTarget(e.target.value)}>
                           <option value="">—</option>
@@ -1426,27 +1534,72 @@ export function App() {
                             <option key={p.id} value={p.id}>{formatDebugPlayerOpt(p)}</option>
                           ))}
                         </select>
-                      </>
+                        {myRole === "delegado" && nightAction === "jail" ? (
+                          <p className="delegado-night-inline-hint">
+                            Você precisará escrever uma justificativa para que a prisão apareça no Folhetim.
+                          </p>
+                        ) : null}
+                        {myRole === "delegado" && nightAction === "jail" && nightTarget ? (
+                          <div className="delegado-justify-field-wrap">
+                            <label className="field-label" htmlFor="delegado-justify-input">
+                              Por que está prendendo {delegadoJailSelectedName}?
+                            </label>
+                            <textarea
+                              id="delegado-justify-input"
+                              className="delegado-justify-textarea"
+                              rows={3}
+                              maxLength={120}
+                              placeholder={`Há indícios de que ${delegadoJailSelectedName} está...`}
+                              value={nightSpecialAction ?? ""}
+                              onChange={(e) => setNightSpecialAction(e.target.value)}
+                              autoComplete="off"
+                            />
+                            <p className="delegado-justify-counter muted">
+                              {120 - (nightSpecialAction?.length ?? 0)} caracteres restantes
+                            </p>
+                            {delegadoJustifyInlineError ? (
+                              <p className="delegado-justify-error" role="alert">
+                                Escreva uma justificativa para continuar.
+                              </p>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
                     )}
                     <button
                       type="button"
-                      disabled={!canSubmit || anyPending || nightActionSent}
+                      disabled={
+                        anyPending ||
+                        nightActionSent ||
+                        nightMissingTargetOnly ||
+                        (!delegadoJailNeedsMoreText && !canSubmit)
+                      }
                       className={nightActionSent ? "vote-sent" : undefined}
                       style={{ marginTop: "4px" }}
-                      onClick={() =>
-                        void run(
-                          "submitNightAction",
-                          {
-                            roomCode,
-                            action: nightAction,
-                            targetId: nightTarget || null,
-                            specialAction: nightSpecialAction,
-                          },
-                          "nightAction",
-                        )
+                      onClick={() => {
+                        if (anyPending || nightActionSent) return;
+                        if (nightMissingTargetOnly) return;
+                        if (myRole === "delegado" && nightAction === "jail" && nightTarget) {
+                          const len = nightSpecialAction?.trim().length ?? 0;
+                          if (len < 10) {
+                            setDelegadoJustifyInlineError(true);
+                            return;
+                          }
+                        }
+                        setDelegadoJustifyInlineError(false);
+                        const payload: Record<string, unknown> = {
+                          roomCode,
+                          action: nightAction,
+                          targetId: nightTarget || null,
+                          specialAction: nightSpecialAction,
+                        };
+                        if (myRole === "delegado" && nightAction === "jail" && nightTarget) {
+                          payload.justification = nightSpecialAction?.trim() ?? "";
+                        }
+                        void run("submitNightAction", payload, "nightAction")
                           .then(() => setNightActionSent(true))
-                          .catch(() => {})
-                      }
+                          .catch(() => {});
+                      }}
                     >
                       <span className="btn-with-spinner">
                         {busy("nightAction")
@@ -1609,23 +1762,48 @@ export function App() {
             return (
               <div className="stack stack--dense day-phase">
                 <div className="game-card log-card day-section folhetim-card">
-                  <strong className="folhetim-title">Folhetim de Bucaré</strong>
+                  <div className="folhetim-masthead">
+                    <div className="folhetim-date-row">Anno {room.round ?? 1} · N.º {((room.round ?? 1) - 1) * 2 + 1} &nbsp;·&nbsp; Bucaré, Sertão</div>
+                    <div className="folhetim-title">Folhetim de Bucaré</div>
+                    <div className="folhetim-lead">Gazeta do folclore — edição especial de amanhecer</div>
+                  </div>
+                  {dawnEntries.filter((e) => e.type !== "dawn").length > 0 && (
+                    <div className="folhetim-manchete">
+                      {dawnEntries.find((e) => e.type === "death")
+                        ? "Morte na Madrugada"
+                        : dawnEntries.find((e) => e.type === "bite")
+                        ? "Marcas Estranhas na Cidade"
+                        : dawnEntries.find((e) => e.type === "terror")
+                        ? "Terror no Alvorecer"
+                        : "Notícias do Amanhecer"}
+                    </div>
+                  )}
+                  <div className="folhetim-corpo">
                   {dawnEntries.filter((e) => e.type !== "dawn").map((e) => (
                     <p key={e.id}>{e.message}</p>
                   ))}
                   {!hasDeathOrElimination && (
-                    <p className="muted">Ninguém foi eliminado esta noite.</p>
+                    <p className="muted">A noite passou em silêncio. Ninguém foi eliminado.</p>
                   )}
-                  {dayFolhetimOutcomes.map((e) => (
-                    <p key={e.id}>{e.message}</p>
-                  ))}
-                  {privateLog.map((e) => (
-                    <p key={e.id} className="private-log-entry">🔒 {e.message}</p>
-                  ))}
+                  </div>
+                  {dayFolhetimOutcomes.length > 0 && (
+                    <div className="folhetim-corpo folhetim-corpo-single">
+                    {dayFolhetimOutcomes.map((e) => (
+                      <p key={e.id}>{e.message}</p>
+                    ))}
+                    </div>
+                  )}
+                  {privateLog.length > 0 && (
+                    <div className="folhetim-private-section">
+                    {privateLog.map((e) => (
+                      <p key={e.id} className="private-log-entry">🔒 {e.message}</p>
+                    ))}
+                    </div>
+                  )}
                   {outOfGame.length > 0 && (
-                    <p className="muted" style={{ marginTop: "0.5rem" }}>
+                    <div className="folhetim-out-of-game">
                       Fora do jogo: {outOfGame.map((p) => p.name).join(", ")}
-                    </p>
+                    </div>
                   )}
                 </div>
                 <div className="game-card chat-card day-section">
@@ -1994,6 +2172,7 @@ export function App() {
           loreOpen={loreOpen}
           setLoreOpen={setLoreOpen}
           allRoundVotes={allRoundVotes}
+          allRoundBotVoteReasons={allRoundBotVoteReasons}
           allNightActions={allNightActions}
           historyLoaded={historyLoaded}
           isHost={isHost}
