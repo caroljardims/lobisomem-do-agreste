@@ -66,6 +66,33 @@ const LS_GLYPH = "folclore_glyph";
 
 const AVATAR_GLYPHS = ["☽", "✦", "◆", "❖", "✧", "☆", "★", "◉"];
 
+/** Xilogravuras disponíveis para o batismo (criaturas). */
+const ROLE_XILO: Record<string, string> = {
+  lobisomem: "/assets/xilo-lobisomem.png",
+  saci:      "/assets/xilo-saci.png",
+  mula:      "/assets/xilo-mula.png",
+  iara:      "/assets/xilo-iara.png",
+};
+
+/** Extrai as três seções narrativas do ROLE_LORE para o batismo. */
+function extractBatismoSections(lore: unknown): { quem: string; faz: string; quer: string } {
+  if (!lore || typeof lore === "string") {
+    return { quem: typeof lore === "string" ? lore : "", faz: "", quer: "" };
+  }
+  const rich = lore as { narrative?: string; sections?: Array<{ kind: string; title?: string; content?: unknown; text?: unknown }> };
+  const narrative = rich.narrative ?? "";
+  const sections = rich.sections ?? [];
+  const faz = sections.find(
+    (s) => s.kind === "kv" && /poder|noturno|poder noturno|habilidade/i.test(String(s.title ?? "")),
+  );
+  const quer = sections.find(
+    (s) => s.kind === "kv" && /objetivo/i.test(String(s.title ?? "")),
+  );
+  const fazText = faz ? String(typeof faz.content === "string" ? faz.content : "") : "";
+  const querText = quer ? String(typeof quer.content === "string" ? quer.content : "") : "";
+  return { quem: narrative, faz: fazText, quer: querText };
+}
+
 const DebugIntroChromeLazy = lazy(() => import("./debug/DebugIntroChrome.js"));
 const DebugGameChromeLazy = lazy(() => import("./debug/DebugGameChrome.js"));
 
@@ -115,6 +142,24 @@ export function App() {
   const [nightToast, setNightToast] = useState<string | null>(null);
   const [delegadoJustifyInlineError, setDelegadoJustifyInlineError] = useState(false);
   const [delegadoIntroDismissed, setDelegadoIntroDismissed] = useState(false);
+
+  // Batismo do personagem — folheto interativo antes da noite 1
+  const [batismoSeen, setBatismoSeen] = useState<boolean>(() => {
+    try { return sessionStorage.getItem(`batismo_${localStorage.getItem(LS_ROOM) ?? ""}`) === "1"; }
+    catch { return false; }
+  });
+  const [batismoFolhetoOpen, setBatismoFolhetoOpen] = useState(false);
+
+  const showBatismo =
+    room?.status === "night" &&
+    Number(room?.round ?? 0) === 1 &&
+    !!myRole &&
+    !batismoSeen;
+
+  function confirmBatismo() {
+    setBatismoSeen(true);
+    try { sessionStorage.setItem(`batismo_${roomCode}`, "1"); } catch { /* ignore */ }
+  }
 
   // Entry flow
   const [view, setView] = useState<View>("intro");
@@ -1266,7 +1311,93 @@ export function App() {
         </>
       )}
 
-      {room && room.status !== "lobby" && room.status !== "ended" && (
+      {/* ── Batismo do personagem — noite 1, antes de tudo ── */}
+      {showBatismo && myRole && (() => {
+        const lore = ROLE_LORE[myRole];
+        const { quem, faz, quer } = extractBatismoSections(lore);
+        const xiloSrc = ROLE_XILO[myRole] ?? null;
+        const meCard = players.find((p) => p.id === playerId);
+        const lado = meCard?.side ?? "morador";
+        const ladoLabel = lado === "criatura" ? "Criatura" : lado === "neutro" ? "Neutro" : "Morador";
+        const displayName = ROLE_DISPLAY[myRole]?.replace(/^\S+\s+/, "") ?? myRole;
+        return (
+          <div className="game-card fade-enter" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+            <div style={{ textAlign: "center" }}>
+              <div className="eyebrow eyebrow-luar" style={{ fontSize: 10, letterSpacing: "0.42em" }}>Editora Bucaré</div>
+              <h2 style={{ fontFamily: "var(--ff-display)", color: "var(--texto-claro)", fontSize: 22, lineHeight: 1.1, marginTop: 6 }}>
+                Esta noite,<br />você é —
+              </h2>
+            </div>
+
+            {/* Folheto interativo */}
+            <div className={`folheto-int folheto-int--${lado} ${batismoFolhetoOpen ? "is-open" : ""}`}>
+              <button
+                type="button"
+                className="folheto-int__capa"
+                onClick={() => setBatismoFolhetoOpen(true)}
+                aria-expanded={batismoFolhetoOpen}
+              >
+                <div className="folheto-int__xilo">
+                  {xiloSrc ? (
+                    <img src={xiloSrc} alt={displayName} />
+                  ) : (
+                    <div className="folheto-int__placeholder">{displayName.toUpperCase()}</div>
+                  )}
+                </div>
+                <div className="folheto-int__name">{displayName.toUpperCase()}</div>
+                <div className="folheto-int__lado">— {ladoLabel} —</div>
+                <div className="folheto-int__hint">
+                  {batismoFolhetoOpen ? "pronto?" : "toque o folheto"}
+                </div>
+              </button>
+
+              <div className="folheto-int__corpo">
+                {quem && (
+                  <>
+                    <div className="folheto-int__sec">quem você é</div>
+                    <p className="folheto-int__txt">{quem}</p>
+                  </>
+                )}
+                {faz && (
+                  <>
+                    <div className="folheto-int__sec">o que você faz</div>
+                    <p className="folheto-int__txt">{faz}</p>
+                  </>
+                )}
+                {quer && (
+                  <>
+                    <div className="folheto-int__sec">o que você quer</div>
+                    <p className="folheto-int__txt">{quer}</p>
+                  </>
+                )}
+                {!quem && !faz && !quer && lore && (
+                  <div className="folheto-int__txt" style={{ marginTop: 0 }}>
+                    <RoleLoreContent lore={lore} />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
+              <button
+                type="button"
+                className={`btn-dia`}
+                disabled={!batismoFolhetoOpen}
+                onClick={confirmBatismo}
+              >
+                {batismoFolhetoOpen ? "Entendi — ir para a noite ☾" : "Toque o folheto primeiro"}
+              </button>
+              {!batismoFolhetoOpen && (
+                <p className="muted" style={{ textAlign: "center", fontSize: 12 }}>
+                  leia com calma — ninguém vê sua carta.
+                </p>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {room && room.status !== "lobby" && room.status !== "ended" && !showBatismo && (
         <div className="game-card">
           <p>
             <strong>
