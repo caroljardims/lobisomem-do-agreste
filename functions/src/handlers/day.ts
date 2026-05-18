@@ -1,7 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { db, loadPlayers, loadSecrets } from "../helpers.js";
-import { finalizeDay } from "../lib/finalize.js";
+import { finalizeDay, maybeFinalizeDayIfAllVotesIn } from "../lib/finalize.js";
 import { canBeExpulsionVoteTarget, canSubmitExpulsionVote } from "../lib/playerVote.js";
 import { findPlayer, requireAuth } from "./shared.js";
 import { buildBotContext, getBotMessage, normalizePhraseKey } from "../lib/botChat/index.js";
@@ -52,15 +52,7 @@ export const submitVote = onCall(async (req) => {
     createdAt: FieldValue.serverTimestamp(),
   });
 
-  const votesSnap = await roomRef.collection("votes").doc(String(round)).get();
-  const votesDoc = votesSnap.data() ?? {};
-  const eligible = players.filter((p) => canSubmitExpulsionVote(p));
-  const allVotesIn =
-    eligible.length === 0 ||
-    eligible.every((p) => Object.hasOwn(votesDoc, p.id));
-  if (allVotesIn) {
-    await finalizeDay(code, round);
-  }
+  await maybeFinalizeDayIfAllVotesIn(code, round);
 
   return { ok: true };
 });

@@ -3951,6 +3951,15 @@ input::placeholder {
 .stages__step--done .stages__label { color: var(--texto-medio); }
 .stages__step--on .stages__label { color: var(--ouro-bucare); }
 
+.stages__step--attention .stages__label {
+  color: var(--ouro-claro);
+}
+
+.stages__dot--attention {
+  border-color: var(--ouro-bucare);
+  box-shadow: 0 0 0 2px rgba(212, 162, 76, 0.35);
+}
+
 .day-stages {
   margin: 2px 0 4px;
   justify-content: center;
@@ -4151,13 +4160,49 @@ input::placeholder {
   gap: 8px;
 }
 
+.dia-footer__votar {
+  width: 100%;
+}
+
+.dia-footer__voted {
+  text-align: center;
+  font-size: 12px;
+  margin: 0;
+}
+
+.dia-footer__host-goto-vote {
+  width: 100%;
+  justify-content: center;
+}
+
 .dia-footer {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding-top: 4px;
+  padding-top: 8px;
+  padding-bottom: max(6px, env(safe-area-inset-bottom, 0px));
   margin-top: auto;
+  position: sticky;
+  bottom: 0;
+  z-index: 6;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(14, 11, 8, 0.92) 18%,
+    var(--ink-noite) 36%
+  );
+}
+
+.dia-footer__waiting {
+  text-align: center;
+  font-size: 13px;
+  margin: 0;
+  padding: 6px 8px;
+}
+
+.dia-footer__apurar-btn {
+  width: 100%;
 }
 
 .dia-footer .vote-bar {

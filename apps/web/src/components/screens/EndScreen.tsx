@@ -6,7 +6,7 @@ import { PartidaChronicle } from "../game/PartidaChronicle.js";
 import { buildEndManchete } from "../../lib/endGameManchete.js";
 import { stablePlayerGlyph } from "../../lib/playerGlyph.js";
 import { ROLE_DISPLAY, ROLE_LORE, RoleLoreContent } from "../../lib/roleStories.js";
-import { useGameSummary } from "../../hooks/useGameSummary.js";
+import { useGameSummary, type GameSummaryPlayer } from "../../hooks/useGameSummary.js";
 import type { PlayerDoc, PublicLogEntry, RoomDoc } from "../../types.js";
 
 type NightActionRow = Record<
@@ -61,6 +61,23 @@ const SIDE_OF_ROLE: Record<string, string> = {
 };
 
 const ROMAN = ["I", "II", "III"] as const;
+
+/** 2º à esquerda, 1º ao centro, 3º à direita */
+const PODIUM_VISUAL = [
+  { index: 1, place: 2 },
+  { index: 0, place: 1 },
+  { index: 2, place: 3 },
+] as const;
+
+function podiumTopThree(players: GameSummaryPlayer[]) {
+  return [...players]
+    .sort((a, b) => {
+      if (b.points !== a.points) return b.points - a.points;
+      if (a.rank !== b.rank) return a.rank - b.rank;
+      return a.displayName.localeCompare(b.displayName, "pt");
+    })
+    .slice(0, 3);
+}
 
 function EndPagesNav({
   page,
@@ -121,9 +138,7 @@ export function EndScreen({
   const goPrev = () => setEndPage((p) => (p > 0 ? ((p - 1) as 0 | 1 | 2) : p));
   const goNext = () => setEndPage((p) => (p < 2 ? ((p + 1) as 0 | 1 | 2) : p));
 
-  const podiumRows = summary?.players
-    ? [...summary.players].sort((a, b) => a.rank - b.rank).slice(0, 3)
-    : [];
+  const podiumRows = summary?.players ? podiumTopThree(summary.players) : [];
 
   return (
     <div className="screen screen--fim">
@@ -215,11 +230,10 @@ export function EndScreen({
           <p className="fim-section-eyebrow">III · a crônica &amp; o pódio</p>
 
           <div className="podio fim-podio" aria-label="Pódio da partida">
-            {[1, 0, 2].map((slot) => {
-              const row = podiumRows[slot];
-              const place = slot === 0 ? 2 : slot === 1 ? 1 : 3;
+            {PODIUM_VISUAL.map(({ index, place }) => {
+              const row = podiumRows[index];
               if (!row) {
-                return <div key={slot} className={`podio__lugar podio__lugar--${place}`} aria-hidden />;
+                return <div key={place} className={`podio__lugar podio__lugar--${place}`} aria-hidden />;
               }
               return (
                 <div key={row.playerId} className={`podio__lugar podio__lugar--${place}`}>

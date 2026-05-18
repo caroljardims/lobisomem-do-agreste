@@ -32,7 +32,7 @@ import {
   bumpMistakeIfExpelledAllyBotPerspective,
   hydrateKnowledgeMapFromPlayerRows,
 } from "./botKnowledge/dayMerge.js";
-import { canBeExpulsionVoteTarget } from "./playerVote.js";
+import { canBeExpulsionVoteTarget, canSubmitExpulsionVote } from "./playerVote.js";
 
 type LoadedPlayer = Awaited<ReturnType<typeof loadPlayers>>[number];
 type SecretsMap = Awaited<ReturnType<typeof loadSecrets>>;
@@ -827,7 +827,7 @@ export async function finalizeNight(roomCode: string, round: number) {
       voteAnnounceBatch.set(crefDn, {
         playerId: voterId,
         name: voterName,
-        text: "votou.",
+        text: `${voterName} votou.`,
         type: "vote",
         votesRound: round,
         createdAt: FieldValue.serverTimestamp(),
@@ -836,11 +836,33 @@ export async function finalizeNight(roomCode: string, round: number) {
     await voteAnnounceBatch.commit();
   }
 
+  await maybeFinalizeDayIfAllVotesIn(roomCode, round);
+
   const aliveAfterDawn = Object.values(res.players).filter((p) => p.alive && !p.eliminated && !p.expelled);
   const aliveHumansAfterDawn = aliveAfterDawn.filter((p) => !players.find((pl) => pl.id === p.id)?.isBot);
   if (aliveHumansAfterDawn.length === 0) {
     await finalizeDay(roomCode, round);
   }
+}
+
+/** Encerra o dia automaticamente quando todos os elegíveis já constam no doc de votos. */
+export async function maybeFinalizeDayIfAllVotesIn(roomCode: string, round: number): Promise<void> {
+  const roomRef = db.collection("rooms").doc(roomCode);
+  const roomSnap = await roomRef.get();
+  const room = roomSnap.data() ?? {};
+  if (room.status !== "day" || room.votingOpen === false) return;
+
+  const players = await loadPlayers(roomCode);
+  const eligible = players.filter((p) => canSubmitExpulsionVote(p));
+  if (eligible.length === 0) {
+    await finalizeDay(roomCode, round);
+    return;
+  }
+
+  const voteSnap = await roomRef.collection("votes").doc(String(round)).get();
+  const votesDoc = voteSnap.data() ?? {};
+  const allIn = eligible.every((p) => p.id && Object.hasOwn(votesDoc, p.id));
+  if (allIn) await finalizeDay(roomCode, round);
 }
 
 export async function finalizeDay(roomCode: string, round: number) {
