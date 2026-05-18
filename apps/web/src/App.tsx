@@ -726,186 +726,142 @@ export function App() {
     if (view === "intro") {
       return (
         <>
-          <div className="page page--landing">
-            <div className="landing-user-corner">
-              {user && (
-                <div
-                  className={`landing-user-menu-wrap${userMenuOpen ? " is-open" : ""}`}
-                  ref={userMenuRef}
-                >
-                  <button
-                    type="button"
-                    className="landing-user-trigger"
-                    aria-expanded={userMenuOpen}
-                    aria-haspopup="menu"
-                    onClick={() => setUserMenuOpen((o) => !o)}
+          <div className="page page--landing page--jornal">
+
+            {/* ── Masthead ── */}
+            <header className="jornal-masthead">
+              <span className="jornal-masthead__col">Edição N.º 1</span>
+              <span className="jornal-masthead__col jornal-masthead__col--center">
+                {new Date().toLocaleDateString("pt-BR", { month: "long" }).replace(/^\w/, c => c.toUpperCase())} de 1922
+              </span>
+              <span className="jornal-masthead__col jornal-masthead__col--right">
+                {user ? (
+                  <div
+                    className={`landing-user-menu-wrap${userMenuOpen ? " is-open" : ""}`}
+                    ref={userMenuRef}
                   >
-                    {user.photoURL ? (
-                      <img src={user.photoURL} alt="" className="landing-user-avatar" />
-                    ) : (
-                      <span className="landing-user-initials">{landingUserInitials()}</span>
+                    <button
+                      type="button"
+                      className="landing-user-trigger"
+                      aria-expanded={userMenuOpen}
+                      aria-haspopup="menu"
+                      onClick={() => setUserMenuOpen((o) => !o)}
+                    >
+                      {user.photoURL ? (
+                        <img src={user.photoURL} alt="" className="landing-user-avatar" />
+                      ) : (
+                        <span className="landing-user-initials">{landingUserInitials()}</span>
+                      )}
+                    </button>
+                    {userMenuOpen && (
+                      <div className="landing-user-dropdown" role="menu">
+                        <button type="button" className="landing-user-dropdown-item" role="menuitem"
+                          onClick={() => { navigateAccount("estatisticas"); setUserMenuOpen(false); }}>
+                          Minha conta
+                        </button>
+                        <button type="button" className="landing-user-dropdown-item" role="menuitem"
+                          onClick={() => { navigateAccount("favoritos"); setUserMenuOpen(false); }}>
+                          Favoritos
+                        </button>
+                        <button type="button" className="landing-user-dropdown-item" role="menuitem"
+                          onClick={() => { navigateAccount("ranking"); setUserMenuOpen(false); }}>
+                          Ranking
+                        </button>
+                        <div className="landing-user-dropdown-divider" role="separator" />
+                        <button type="button" className="landing-user-dropdown-item" role="menuitem"
+                          onClick={() => void handleLandingSignOut()}>
+                          Sair
+                        </button>
+                      </div>
                     )}
-                  </button>
-                  {userMenuOpen && (
-                    <div className="landing-user-dropdown" role="menu">
-                      <button
-                        type="button"
-                        className="landing-user-dropdown-item"
-                        role="menuitem"
-                        onClick={() => {
-                          navigateAccount("estatisticas");
-                          setUserMenuOpen(false);
-                        }}
-                      >
-                        Minha conta
-                      </button>
-                      <button
-                        type="button"
-                        className="landing-user-dropdown-item"
-                        role="menuitem"
-                        onClick={() => {
-                          navigateAccount("favoritos");
-                          setUserMenuOpen(false);
-                        }}
-                      >
-                        Favoritos
-                      </button>
-                      <button
-                        type="button"
-                        className="landing-user-dropdown-item"
-                        role="menuitem"
-                        onClick={() => {
-                          navigateAccount("ranking");
-                          setUserMenuOpen(false);
-                        }}
-                      >
-                        Ranking
-                      </button>
-                      <div className="landing-user-dropdown-divider" role="separator" />
-                      <button
-                        type="button"
-                        className="landing-user-dropdown-item"
-                        role="menuitem"
-                        onClick={() => void handleLandingSignOut()}
-                      >
-                        Sair
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-            <div className="intro-top-deco" aria-hidden="true">
-            <div className="deco-divider">
-              <span className="deco-glyph">◆ ◆ ◆</span>
-            </div>
-          </div>
-          <div className="brand-center">
-            <div className="brand-title">Folhetim de Bucaré</div>
-          </div>
-
-          <div className="intro-body">
-            <div className="intro-cordel-wrap">
-              <div className="intro-eyebrow">Anno I · N.º 1 — Bucaré, Sertão</div>
-            <div className="intro-cordel" lang="pt-BR">
-              <p>
-                Noite longa no sertão
-                <br />
-                O calor não é da rua
-                <br />
-                Quem assombra meu portão
-                <br />
-                Tem apreço pela lua.
-                <br />
-                A magia dessa gente
-                <br />
-                Tem poder inconsequente!
-              </p>
-              <p>
-                Senti um calor no couro
-                <br />
-                Tão perto passou a mula!
-                <br />
-                E com grito da Iara
-                <br />
-                Rio arrasta quem não cura!
-                <br />
-                E o lobo dessa terra
-                <br />
-                Foi vizinho, virou fera!
-              </p>
-              <p>
-                Nessa noite de mistério
-                <br />
-                Quem se vai e quem que fica?
-                <br />
-                Vai ser no alvorecer
-                <br />
-                Que resolve a intriga
-                <br />
-                Se eu vivo ou se me vô
-                <br />
-                Pr'outro mundo, que horrô!
-              </p>
-            </div>
-            </div>
-            <p className="copy-muted">
-              crie uma sala, divida o código com a turma e revele os segredos do
-              folclore — em tempo real.
-            </p>
-          </div>
-
-          <div className="spacer" />
-
-          <div className="ctas">
-            <button
-              type="button"
-              className="primary-btn"
-              onClick={() => {
-                if (!user) {
-                  postAuthTarget.current = "create";
-                  setAuthModalOpen(true);
-                  return;
-                }
-                setView("create");
-              }}
-            >
-              <div className="btn-stack">
-                <span className="btn-title">Criar uma sala</span>
-                <span className="btn-sub">você vira o anfitrião da noite</span>
-              </div>
-              <span className="btn-arrow" aria-hidden>
-                →
+                  </div>
+                ) : (
+                  <span>Tiragem: Pra Leitura Interna</span>
+                )}
               </span>
-            </button>
-            <button
-              type="button"
-              className="ghost-btn"
-              onClick={() => {
-                setJoinCodeArr(["", "", "", ""]);
-                if (!user) {
-                  postAuthTarget.current = "join";
-                  setAuthModalOpen(true);
-                  return;
-                }
-                setView("join");
-              }}
-            >
-              <div className="btn-stack">
-                <span className="btn-title">Entrar com código</span>
-                <span className="btn-sub">já recebeu o convite</span>
-              </div>
-              <span className="btn-arrow" aria-hidden>
-                →
-              </span>
-            </button>
-          </div>
+            </header>
 
-          <div className="footer">
-            <div className="deco-divider">
-              <span className="deco-glyph">◆ ◆ ◆</span>
+            <div className="jornal-masthead__rule" />
+
+            {/* ── Hero ── */}
+            <div className="jornal-hero">
+              <div className="jornal-hero__text">
+                <h1 className="jornal-titulo">Folhetim<br />de Bucaré</h1>
+              </div>
             </div>
-          </div>
+
+            <div className="jornal-masthead__rule jornal-masthead__rule--thin" />
+
+            {/* ── Corpo: cordel + CTAs ── */}
+            <div className="jornal-corpo">
+              {/* Botões — aparecem primeiro no mobile */}
+              <div className="jornal-ctas">
+                <button
+                  type="button"
+                  className="primary-btn"
+                  onClick={() => {
+                    if (!user) { postAuthTarget.current = "create"; setAuthModalOpen(true); return; }
+                    setView("create");
+                  }}
+                >
+                  <div className="btn-stack">
+                    <span className="btn-title">Criar uma sala</span>
+                    <span className="btn-sub">você vira o anfitrião da noite</span>
+                  </div>
+                  <span className="btn-arrow" aria-hidden>→</span>
+                </button>
+                <button
+                  type="button"
+                  className="ghost-btn"
+                  onClick={() => {
+                    setJoinCodeArr(["", "", "", ""]);
+                    if (!user) { postAuthTarget.current = "join"; setAuthModalOpen(true); return; }
+                    setView("join");
+                  }}
+                >
+                  <div className="btn-stack">
+                    <span className="btn-title">Entrar com código</span>
+                    <span className="btn-sub">já recebeu o convite</span>
+                  </div>
+                  <span className="btn-arrow" aria-hidden>→</span>
+                </button>
+              </div>
+
+              {/* Cordel — coluna esquerda no desktop */}
+              <div className="jornal-cordel" lang="pt-BR">
+                <p>
+                  Noite longa no sertão<br />
+                  O calor não é da rua<br />
+                  Quem assombra meu portão<br />
+                  Tem apreço pela lua.<br />
+                  A magia dessa gente<br />
+                  Tem poder inconsequente!
+                </p>
+                <p>
+                  Senti um calor no couro<br />
+                  Tão perto passou a mula!<br />
+                  E com grito da Iara<br />
+                  Rio arrasta quem não cura!<br />
+                  E o lobo dessa terra<br />
+                  Foi vizinho, virou fera!
+                </p>
+                <p>
+                  Nessa noite de mistério<br />
+                  Quem se vai e quem que fica?<br />
+                  Vai ser no alvorecer<br />
+                  Que resolve a intriga<br />
+                  Se eu vivo ou se me vô<br />
+                  Pr'outro mundo, que horrô!
+                </p>
+              </div>
+            </div>
+
+            {/* ── Rodapé ── */}
+            <div className="jornal-masthead__rule" />
+            <footer className="jornal-rodape">
+              <span>Por: caroljardims</span>
+              <span>Preço: Dois Mil-Réis</span>
+            </footer>
           </div>
           {debugLandingChrome}
           {authModal}

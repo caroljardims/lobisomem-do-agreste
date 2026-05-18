@@ -1814,6 +1814,142 @@ input::placeholder {
   position: relative;
 }
 
+/* ══════════════════════════════════════════════
+   JORNAL — landing redesign (capa de folhetim)
+   ══════════════════════════════════════════════ */
+.page--jornal {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  padding: 0;
+  gap: 0;
+}
+
+.jornal-masthead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 20px;
+  gap: 8px;
+}
+.jornal-masthead__col {
+  font-family: var(--ff-headline);
+  font-size: 9px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--texto-poeira);
+  flex: 1;
+}
+.jornal-masthead__col--center {
+  text-align: center;
+}
+.jornal-masthead__col--right {
+  text-align: right;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+.jornal-masthead__rule {
+  border: none;
+  border-top: 2px solid var(--ouro-sombra);
+  margin: 0 16px;
+}
+.jornal-masthead__rule--thin {
+  border-top-width: 1px;
+  border-color: var(--linha-fina);
+  margin: 0 16px;
+}
+
+.jornal-hero {
+  padding: 28px 20px 20px;
+}
+.jornal-titulo {
+  font-family: var(--ff-display);
+  font-size: clamp(48px, 14vw, 80px);
+  line-height: 0.95;
+  color: var(--ouro-bucare);
+  letter-spacing: -0.01em;
+  margin: 0 0 12px;
+}
+.jornal-subtitulo {
+  font-family: var(--ff-headline);
+  font-size: 12px;
+  letter-spacing: 0.22em;
+  color: var(--texto-poeira);
+  text-transform: uppercase;
+  margin: 0;
+}
+
+/* desktop: cordel esquerda, botões direita */
+.jornal-corpo {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-areas: "cordel ctas";
+  gap: 0 24px;
+  padding: 20px 20px;
+  flex: 1;
+  align-items: start;
+}
+.jornal-cordel {
+  grid-area: cordel;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.jornal-cordel p {
+  font-family: var(--ff-serif);
+  font-style: italic;
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--texto-claro);
+  margin: 0;
+}
+.jornal-cordel p::before { content: '"'; }
+.jornal-cordel p::after  { content: '"'; }
+
+.jornal-ctas {
+  grid-area: ctas;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* mobile: botões acima do cordel */
+@media (max-width: 600px) {
+  .jornal-corpo {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "ctas"
+      "cordel";
+    padding: 16px;
+    gap: 20px 0;
+  }
+}
+
+.jornal-rodape {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 20px 16px;
+  gap: 8px;
+}
+.jornal-rodape span {
+  font-family: var(--ff-headline);
+  font-size: 8px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--texto-poeira);
+  flex: 1;
+}
+.jornal-rodape span:nth-child(2) { text-align: center; }
+.jornal-rodape span:last-child   { text-align: right; }
+
+@media (max-width: 480px) {
+  .jornal-titulo {
+    font-size: clamp(44px, 16vw, 64px);
+  }
+}
+
 .landing-user-corner {
   position: absolute;
   top: 4px;
