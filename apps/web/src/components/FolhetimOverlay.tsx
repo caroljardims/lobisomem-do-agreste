@@ -22,7 +22,7 @@ export function FolhetimOverlay({
       className="folhetim-overlay-backdrop"
       role="dialog"
       aria-modal="true"
-      aria-label="Folhetim de Bucaré — edição da madrugada"
+      aria-label="Folhetim de Bucaré — jornal independente do município"
       onClick={onClose}
     >
       <div className="folhetim-overlay" onClick={(e) => e.stopPropagation()}>

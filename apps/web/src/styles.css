@@ -5,11 +5,27 @@
   --ink-carvao: #221A12;
   --ink-cinza:  #3A2E22;
 
-  /* ── Paper — yellowed cordel / folhetim ── */
-  --papel-velho:       #E4D2A8;
-  --papel-claro:       #F1E2BB;
-  --papel-sombra:      #C6B084;
-  --papel-mancha:      #B89B6A;
+  /* ── Paper — yellowed cordel / folhetim (tom quente) ── */
+  --papel-velho:       #D9C5A3;
+  --papel-claro:       #E8D6B4;
+  --papel-sombra:      #C4A876;
+  --papel-mancha:      #B5986A;
+  --folhetim-paper-bg:
+    radial-gradient(ellipse 80% 60% at 15% 10%, rgba(139, 58, 46, 0.12), transparent 60%),
+    radial-gradient(ellipse 70% 70% at 90% 95%, rgba(184, 115, 46, 0.14), transparent 60%),
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='320' height='320'><filter id='p'><feTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' seed='7'/><feColorMatrix values='0 0 0 0 0.22 0 0 0 0 0.14 0 0 0 0 0.08 0 0 0 0.20 0'/></filter><rect width='320' height='320' filter='url(%23p)'/></svg>");
+
+  /* ── Atmosfera dia / amanhecer (brilho tijolo + ocre no fundo) ── */
+  --dia-centro:  #331a0f;
+  --dia-medio:   #2d1b12;
+  --dia-borda:   #140c08;
+  --dia-borda-2: #1a0f0a;
+  --fase-quente-ambiente:
+    radial-gradient(ellipse 88% 58% at 50% 10%, rgba(139, 58, 46, 0.32) 0%, transparent 52%),
+    radial-gradient(ellipse 95% 80% at 50% 38%, var(--dia-centro) 0%, var(--dia-medio) 32%, var(--dia-borda-2) 68%, var(--dia-borda) 100%);
+  --fase-quente-brilho:
+    radial-gradient(ellipse 72% 44% at 50% 0%, rgba(212, 162, 76, 0.2) 0%, transparent 62%),
+    radial-gradient(ellipse 58% 36% at 50% 14%, rgba(139, 58, 46, 0.16) 0%, transparent 58%);
   --tinta-papel:       #2B1F12;
   --tinta-papel-mid:   #5A4830;
   --tinta-papel-faint: rgba(43, 31, 18, 0.45);
@@ -109,6 +125,16 @@ body {
   overflow-x: hidden;
   background: var(--ink-noite);
   background-attachment: fixed;
+}
+
+body:has(.fase--dia),
+body:has(.fase--amanhecer) {
+  background: var(--dia-borda);
+}
+
+body:has(.fase--dia)::before,
+body:has(.fase--amanhecer)::before {
+  opacity: 0.38;
 }
 
 body::before {
@@ -1233,10 +1259,7 @@ input::placeholder {
 .folhetim-card {
   font-family: var(--ff-serif);
   background-color: var(--papel-velho) !important;
-  background-image:
-    radial-gradient(ellipse 80% 60% at 15% 10%, rgba(110, 58, 31, 0.10), transparent 60%),
-    radial-gradient(ellipse 70% 70% at 90% 95%, rgba(139, 58, 46, 0.12), transparent 60%),
-    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='320' height='320'><filter id='p'><feTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' seed='7'/><feColorMatrix values='0 0 0 0 0.18 0 0 0 0 0.12 0 0 0 0 0.07 0 0 0 0.22 0'/></filter><rect width='320' height='320' filter='url(%23p)'/></svg>") !important;
+  background-image: var(--folhetim-paper-bg) !important;
   color: var(--tinta-papel) !important;
   border: 1px solid var(--papel-mancha) !important;
   border-radius: var(--r-sm) !important;
@@ -1307,7 +1330,8 @@ input::placeholder {
   letter-spacing: 0.22em;
   text-transform: uppercase;
   border: 2px solid var(--tinta-papel);
-  border-left: 0; border-right: 0;
+  border-left: 0;
+  border-right: 0;
   padding: 6px 18px;
   margin: 12px 0 0;
   color: var(--tinta-papel);
@@ -1330,12 +1354,13 @@ input::placeholder {
   break-inside: avoid;
 }
 
-.folhetim-corpo .drop::first-letter {
+.folhetim-corpo .drop::first-letter,
+.folhetim-corpo-drop::first-letter {
   font-family: var(--ff-display);
-  font-size: 34px;
+  font-size: 36px;
   line-height: 0.85;
   float: left;
-  padding: 4px 5px 0 0;
+  padding: 4px 6px 0 0;
   color: var(--tijolo-adobe);
 }
 
@@ -3286,9 +3311,7 @@ input::placeholder {
 }
 
 .fase--dia {
-  background:
-    radial-gradient(ellipse 70% 35% at 50% 0%, rgba(184,115,46,0.13) 0%, transparent 60%),
-    var(--ink-noite);
+  background: var(--fase-quente-ambiente);
 }
 
 .fase--dia::before {
@@ -3297,7 +3320,7 @@ input::placeholder {
   inset: 0;
   pointer-events: none;
   z-index: 0;
-  background: radial-gradient(ellipse 55% 28% at 50% 0%, rgba(212,162,76,0.08) 0%, transparent 65%);
+  background: var(--fase-quente-brilho);
 }
 
 /* ── Dia: cards get warm tint ── */
@@ -3435,8 +3458,8 @@ input::placeholder {
 .intro-cordel-wrap {
   position: relative;
   background:
-    radial-gradient(ellipse at 60% 40%, rgba(228,210,168,0.06) 0%, transparent 70%),
-    linear-gradient(160deg, var(--papel-velho) 0%, #d4bb88 100%);
+    radial-gradient(ellipse at 60% 40%, rgba(217, 197, 163, 0.12) 0%, transparent 70%),
+    linear-gradient(160deg, var(--papel-velho) 0%, #c9a86e 100%);
   border: 1px solid rgba(90,72,48,0.35);
   border-radius: 0;
   padding: 18px 20px;
@@ -3722,10 +3745,7 @@ input::placeholder {
 .folheto-int__corpo {
   margin-top: 8px;
   background-color: var(--papel-velho);
-  background-image:
-    radial-gradient(ellipse 80% 60% at 15% 8%, rgba(110,58,31,0.08), transparent 60%),
-    radial-gradient(ellipse 70% 70% at 92% 96%, rgba(139,58,46,0.10), transparent 60%),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='320'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' seed='7'/%3E%3CfeColorMatrix values='0 0 0 0 0.18 0 0 0 0 0.12 0 0 0 0 0.07 0 0 0 0.18 0'/%3E%3C/filter%3E%3Crect width='320' height='320' filter='url(%23p)'/%3E%3C/svg%3E");
+  background-image: var(--folhetim-paper-bg);
   color: var(--tinta-papel);
   border: 1px solid var(--papel-mancha);
   border-radius: 1px;
@@ -4189,8 +4209,8 @@ input::placeholder {
   background: linear-gradient(
     180deg,
     transparent 0%,
-    rgba(14, 11, 8, 0.92) 18%,
-    var(--ink-noite) 36%
+    rgba(28, 20, 13, 0.88) 18%,
+    var(--dia-borda) 36%
   );
 }
 
@@ -4655,8 +4675,7 @@ input::placeholder {
   gap: 10px;
   width: 100%;
   background: var(--papel-velho);
-  background-image:
-    radial-gradient(ellipse 80% 60% at 10% 5%, rgba(110,58,31,0.07), transparent 60%);
+  background-image: var(--folhetim-paper-bg);
   border: 1px solid var(--papel-mancha);
   color: var(--tinta-papel);
   padding: 8px 12px;
@@ -4797,9 +4816,9 @@ input::placeholder {
 
 .fase--amanhecer {
   background:
-    radial-gradient(ellipse 90% 65% at 50% 0%, rgba(184, 115, 46, 0.22) 0%, transparent 58%),
-    radial-gradient(ellipse 100% 80% at 50% 100%, rgba(30, 20, 10, 0.85) 0%, transparent 50%),
-    linear-gradient(180deg, #14100c 0%, #0e0b08 55%, #0a0806 100%);
+    radial-gradient(ellipse 92% 62% at 50% 6%, rgba(139, 58, 46, 0.38) 0%, transparent 54%),
+    radial-gradient(ellipse 100% 78% at 50% 28%, var(--dia-centro) 0%, var(--dia-medio) 36%, transparent 72%),
+    linear-gradient(180deg, #1c140d 0%, var(--dia-borda-2) 48%, var(--dia-borda) 100%);
 }
 
 .fase--amanhecer::before {
@@ -4808,7 +4827,7 @@ input::placeholder {
   inset: 0;
   pointer-events: none;
   z-index: 0;
-  background: radial-gradient(ellipse 55% 40% at 50% 8%, rgba(212, 162, 76, 0.08) 0%, transparent 70%);
+  background: var(--fase-quente-brilho);
 }
 
 .screen--amanhecer {
@@ -4862,7 +4881,9 @@ input::placeholder {
   position: fixed;
   inset: 0;
   z-index: 55;
-  background: rgba(8, 6, 4, 0.88);
+  background:
+    radial-gradient(ellipse 90% 72% at 50% 22%, rgba(139, 58, 46, 0.22) 0%, transparent 55%),
+    radial-gradient(ellipse 100% 85% at 50% 40%, rgba(45, 27, 18, 0.97), rgba(20, 12, 8, 0.95));
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -5366,19 +5387,6 @@ input::placeholder {
 @keyframes papel-cai-kf {
   0%   { transform: translateY(-50%) rotate(2deg); opacity: 0; }
   100% { transform: translateY(0) rotate(-0.5deg); opacity: 1; }
-}
-
-/* ══════════════════════════════════════════════
-   FOLHETIM — drop cap + newspaper extras
-   ══════════════════════════════════════════════ */
-
-.folhetim-corpo-drop::first-letter {
-  font-family: var(--ff-display);
-  font-size: 36px;
-  line-height: 0.85;
-  float: left;
-  padding: 4px 6px 0 0;
-  color: var(--tijolo-adobe);
 }
 
 /* ══════════════════════════════════════════════

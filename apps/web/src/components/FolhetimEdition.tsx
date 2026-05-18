@@ -20,9 +20,9 @@ export function FolhetimEdition({
   folhetim,
   loading = false,
   className = "",
-  lead = "— edição da madrugada —",
+  lead = "— jornal independente do município —",
   editionLabel,
-  ariaLabel = "Folhetim de Bucaré — edição da madrugada",
+  ariaLabel = "Folhetim de Bucaré — jornal independente do município",
 }: FolhetimEditionProps) {
   const edition = folhetimEditionNumber(round);
   const dateEdition =

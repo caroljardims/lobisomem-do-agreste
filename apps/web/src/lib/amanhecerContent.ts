@@ -50,7 +50,7 @@ function pickManchete(events: PublicLogEntry[]): string {
   if (events.some((e) => e.type === "bite")) return "MARCAS ESTRANHAS NA CIDADE";
   if (events.some((e) => e.type === "terror")) return "TERROR NO ALVORECER";
   if (events.some((e) => e.type === "invocation")) return "UMA PRESENÇA RETORNA";
-  return "NOTÍCIAS DA MADRUGADA";
+  return "ACONTECEU NA MADRUGADA";
 }
 
 function eventToParagraph(e: PublicLogEntry): string {
