@@ -1,27 +1,13 @@
+import { useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { BtnSpinner } from "../BtnSpinner.js";
-import { describeNightAction } from "../../lib/describeNightAction.js";
-import { individualWinChronicleLine } from "../../lib/individualWinLabels.js";
+import { FolhetimEdition } from "../FolhetimEdition.js";
+import { PartidaChronicle } from "../game/PartidaChronicle.js";
+import { buildEndManchete } from "../../lib/endGameManchete.js";
+import { stablePlayerGlyph } from "../../lib/playerGlyph.js";
 import { ROLE_DISPLAY, ROLE_LORE, RoleLoreContent } from "../../lib/roleStories.js";
 import { useGameSummary } from "../../hooks/useGameSummary.js";
 import type { PlayerDoc, PublicLogEntry, RoomDoc } from "../../types.js";
-
-/** Entradas `special` que pertencem à fase da noite / abertura (não ao cordel do dia). */
-function isNightPublicSpecial(e: PublicLogEntry): boolean {
-  const m = String(e.message ?? "");
-  return m.startsWith("Alinhamento (1ª noite):") || m.includes("Mesa de cinco: por regra do cordel");
-}
-
-/** Evita repetir a mesma estrofe de encerramento (ex.: dupla chamada a `tryEndGameCollective`). */
-function dedupeChronicleEndEntries(entries: PublicLogEntry[]): PublicLogEntry[] {
-  const seen = new Set<string>();
-  return entries.filter((e) => {
-    const key = String(e.message ?? "");
-    if (!key || seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
 
 type NightActionRow = Record<
   string,
@@ -31,6 +17,8 @@ type NightActionRow = Record<
 export type EndScreenProps = {
   room: RoomDoc;
   players: PlayerDoc[];
+  playerId: string;
+  selfGlyph: string;
   publicLog: PublicLogEntry[];
   myRole: string | null;
   loreOpen: boolean;
@@ -46,9 +34,67 @@ export type EndScreenProps = {
   roomCode: string;
 };
 
+const SIDE_LABEL: Record<string, string> = {
+  criatura: "criatura",
+  morador: "morador",
+  neutro: "neutro",
+};
+
+const SIDE_OF_ROLE: Record<string, string> = {
+  lobisomem: "criatura",
+  saci: "criatura",
+  mula: "criatura",
+  boto: "criatura",
+  iara: "criatura",
+  curupira: "neutro",
+  doutor: "morador",
+  mae_de_santo: "morador",
+  geni: "morador",
+  boitata: "neutro",
+  cartomante: "morador",
+  delegado: "morador",
+  cangaceiro: "morador",
+  padre: "morador",
+  coronel: "morador",
+  aldeao: "morador",
+  bras_cubas: "neutro",
+};
+
+const ROMAN = ["I", "II", "III"] as const;
+
+function EndPagesNav({
+  page,
+  onPrev,
+  onNext,
+}: {
+  page: 0 | 1 | 2;
+  onPrev: () => void;
+  onNext: () => void;
+}) {
+  return (
+    <footer className="fim-pages-footer">
+      <nav className="pages-nav" aria-label="Navegação da edição final">
+        <button type="button" className="pages-nav__btn" disabled={page === 0} onClick={onPrev}>
+          ← anterior
+        </button>
+        <div className="pages-dots" aria-hidden>
+          {([0, 1, 2] as const).map((i) => (
+            <span key={i} className={`pages-dot${page === i ? " pages-dot--on" : ""}`} />
+          ))}
+        </div>
+        <button type="button" className="pages-nav__btn" disabled={page === 2} onClick={onNext}>
+          próxima →
+        </button>
+      </nav>
+    </footer>
+  );
+}
+
 export function EndScreen({
   room,
   players,
+  playerId,
+  selfGlyph,
   publicLog,
   myRole,
   loreOpen,
@@ -63,372 +109,173 @@ export function EndScreen({
   run,
   roomCode,
 }: EndScreenProps) {
+  const [endPage, setEndPage] = useState<0 | 1 | 2>(0);
   const gameId = typeof room.lastGameHistoryId === "string" ? room.lastGameHistoryId : undefined;
   const { summary, loaded: summaryLoaded, error: summaryError } = useGameSummary(gameId);
 
-  const moradoresPlazaTie =
-    room.winner === "moradores" && room.collectiveEndKind === "moradores_plaza_tie";
-  const MORADORES_PLAZA_TIE_COPY =
-    "A cidade segurou o fôlego. O folclore e os moradores ficaram frente a frente na praça da Bucaré — iguais em número, iguais em determinação. No empate, a cidade resiste. Os moradores venceram.";
-
-  const winnerLabel =
-    moradoresPlazaTie
-      ? "Os moradores venceram"
-      : room.winner === "moradores"
-      ? "Os moradores controlaram as criaturas"
-      : room.winner === "criaturas"
-        ? "As criaturas dominaram a cidade dos humanos"
-        : room.winner === "bots"
-          ? "🤖 Apocalipse Robô 🤖"
-          : (() => {
-              const wp = players.find((p) => p.id === room.winner);
-              return wp ? `${wp.name} venceu` : "Fim de jogo";
-            })();
-
+  const manchete = buildEndManchete(room, players);
   const revealed = room.revealedRoles ?? {};
-  const SIDE_LABEL: Record<string, string> = {
-    criatura: "criatura",
-    morador: "morador",
-    neutro: "neutro",
-  };
-  const SIDE_OF_ROLE: Record<string, string> = {
-    lobisomem: "criatura",
-    saci: "criatura",
-    mula: "criatura",
-    boto: "criatura",
-    iara: "criatura",
-    curupira: "neutro",
-    doutor: "morador",
-    mae_de_santo: "morador",
-    geni: "morador",
-    boitata: "neutro",
-    cartomante: "morador",
-    delegado: "morador",
-    cangaceiro: "morador",
-    padre: "morador",
-    coronel: "morador",
-    aldeao: "morador",
-    bras_cubas: "neutro",
-  };
+  const roundNum = Number(room.round ?? 1);
+  const editionNum = (roundNum - 1) * 2 + 1;
 
-  const totalRounds = Number(room.round ?? 1);
-  const playerNameById: Record<string, string> = {};
-  for (const p of players) {
-    if (p.id) playerNameById[p.id] = p.name ?? p.id;
-  }
+  const goPrev = () => setEndPage((p) => (p > 0 ? ((p - 1) as 0 | 1 | 2) : p));
+  const goNext = () => setEndPage((p) => (p < 2 ? ((p + 1) as 0 | 1 | 2) : p));
 
-  const BOT_VOTE_REASON_PT: Record<string, string> = {
-    confirmed: "alvo confirmado / forçado pelo debug",
-    suspected: "lista de suspeitas",
-    traitor: "reagir a quem votou no bot",
-    random: "palpite / oposto provável",
-    self_defense: "defesa",
-    chaos: "caos (Sací)",
-    bras_troll: "caos (Brás)",
-  };
-
-  const individualWins = Array.isArray(room.individualWins) ? [...room.individualWins] : [];
-  individualWins.sort((a, b) => a.round - b.round || a.timestamp - b.timestamp);
+  const podiumRows = summary?.players
+    ? [...summary.players].sort((a, b) => a.rank - b.rank).slice(0, 3)
+    : [];
 
   return (
-    <div className="stack stack--dense">
+    <div className="screen screen--fim">
+      <p className="fim-edition-label">Edição final · {endPage + 1}/3</p>
+
       {myRole && ROLE_LORE[myRole] && (
-        <div className="role-story-card">
-          <button
-            type="button"
-            className="role-story-toggle"
-            onClick={() => setLoreOpen((v) => !v)}
-          >
-            <span>História — {ROLE_DISPLAY[myRole] ?? myRole}</span>
-            <span className="role-story-chevron">{loreOpen ? "▲" : "▼"}</span>
-          </button>
-          {loreOpen && (
-            <div className="role-story-body">
-              <p className="role-story-location">Bucaré do Sertão, 1922.</p>
-              <RoleLoreContent lore={ROLE_LORE[myRole]} />
-            </div>
-          )}
+        <button
+          type="button"
+          className="fim-lore-toggle"
+          onClick={() => setLoreOpen((v) => !v)}
+        >
+          História — {ROLE_DISPLAY[myRole] ?? myRole} {loreOpen ? "▲" : "▼"}
+        </button>
+      )}
+      {loreOpen && myRole && ROLE_LORE[myRole] && (
+        <div className="fim-lore-body">
+          <RoleLoreContent lore={ROLE_LORE[myRole]} />
         </div>
       )}
-      <div className="game-card ended-card">
-        <p className="ended-label">Fim de jogo</p>
-        <p className="ended-winner">{winnerLabel}</p>
-        {moradoresPlazaTie && (
-          <p className="muted" style={{ marginTop: 10, whiteSpace: "pre-line", lineHeight: 1.45 }}>
-            {MORADORES_PLAZA_TIE_COPY}
-          </p>
-        )}
-        {isHost && (
-          <button
-            type="button"
-            className="primary-btn"
-            disabled={anyPending}
-            style={{ marginTop: "1rem" }}
-            onClick={() => void run("restartGame", { roomCode }, "restartGame").catch(() => {})}
-          >
-            <div className="btn-stack">
-              <span className="btn-title btn-title-row">
-                {busy("restartGame") ? "reiniciando…" : "Recomeçar"}
+
+      {endPage === 0 && (
+        <section className="fim-page fim-page--manchete pageflip-enter" aria-label="Manchete final">
+          <FolhetimEdition
+            round={roundNum}
+            folhetim={{
+              manchete: manchete.manchete,
+              paragraphs: [manchete.body],
+              silentNight: false,
+            }}
+            lead="— a última edição —"
+            editionLabel="Edição final"
+            className="folhetim--fim-manchete papel-cai"
+            ariaLabel="Folhetim de Bucaré — última edição"
+          />
+          <EndPagesNav page={0} onPrev={goPrev} onNext={goNext} />
+        </section>
+      )}
+
+      {endPage === 1 && (
+        <section className="fim-page fim-page--revelacao pageflip-enter" aria-label="Revelação final">
+          <p className="fim-section-eyebrow">II · a revelação</p>
+          <p className="fim-section-tagline">agora a vila sabe quem era cada um.</p>
+
+          <ul className="fim-revelacao-list">
+            {players.map((p) => {
+              const id = p.id ?? "";
+              const role = revealed[id];
+              const roleName = role ? (ROLE_DISPLAY[role] ?? role) : "?";
+              const side = role ? SIDE_OF_ROLE[role] : null;
+              const out =
+                p.alive === false || Boolean(p.eliminated) || Boolean(p.expelled);
+              const isYou = id === playerId;
+              const glyph = stablePlayerGlyph(id, playerId, selfGlyph);
+              const subClass =
+                side === "criatura"
+                  ? " jogador-row__sub--criatura"
+                  : side === "neutro"
+                    ? " jogador-row__sub--neutro"
+                    : " jogador-row__sub--morador";
+
+              return (
+                <li key={id}>
+                  <div
+                    className={`jogador-row fim-revelacao-row${out ? " jogador-row--eliminado" : ""}${side === "criatura" ? " jogador-row--criatura" : ""}`}
+                  >
+                    <span className="jogador-row__sim" aria-hidden>
+                      {glyph}
+                    </span>
+                    <div className="fim-revelacao-info">
+                      <span className="jogador-row__nome">{p.name}</span>
+                      <span className={`jogador-row__sub${subClass}`}>
+                        {roleName}
+                        {side ? ` · ${SIDE_LABEL[side] ?? side}` : ""}
+                      </span>
+                    </div>
+                    {isYou && <span className="jogador-row__tag jogador-row__tag--voce">você</span>}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+
+          <EndPagesNav page={1} onPrev={goPrev} onNext={goNext} />
+        </section>
+      )}
+
+      {endPage === 2 && (
+        <section className="fim-page fim-page--cronica pageflip-enter" aria-label="Crônica e pódio">
+          <p className="fim-section-eyebrow">III · a crônica &amp; o pódio</p>
+
+          <div className="podio fim-podio" aria-label="Pódio da partida">
+            {[1, 0, 2].map((slot) => {
+              const row = podiumRows[slot];
+              const place = slot === 0 ? 2 : slot === 1 ? 1 : 3;
+              if (!row) {
+                return <div key={slot} className={`podio__lugar podio__lugar--${place}`} aria-hidden />;
+              }
+              return (
+                <div key={row.playerId} className={`podio__lugar podio__lugar--${place}`}>
+                  <span className="podio__nome">{row.displayName}</span>
+                  <div className="podio__base">
+                    <span>{ROMAN[place - 1]}</span>
+                    <span className="podio__pts">{row.points} pts</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {!summaryLoaded && (
+            <p className="muted fim-podio-loading">Carregando pontuação…</p>
+          )}
+          {summaryError && <p className="muted fim-podio-loading">{summaryError}</p>}
+          {summaryLoaded && podiumRows.length === 0 && (
+            <p className="muted fim-podio-loading">Resumo de pontos ainda não disponível.</p>
+          )}
+
+          <article className="folhetim folhetim--edition folhetim--fim-cronica folhetim-card">
+            <header className="fim-cronica-header">
+              <h2 className="fim-cronica-title">A crônica</h2>
+              <span className="fim-cronica-num">
+                N.º {String(editionNum).padStart(2, "0")}
+              </span>
+            </header>
+            <PartidaChronicle
+              room={room}
+              players={players}
+              publicLog={publicLog}
+              allRoundVotes={allRoundVotes}
+              allRoundBotVoteReasons={allRoundBotVoteReasons}
+              allNightActions={allNightActions}
+              historyLoaded={historyLoaded}
+              compact
+            />
+          </article>
+
+          {isHost && (
+            <button
+              type="button"
+              className="btn-dia fim-restart-btn"
+              disabled={anyPending}
+              onClick={() => void run("restartGame", { roomCode }, "restartGame").catch(() => {})}
+            >
+              <span className="btn-with-spinner">
+                {busy("restartGame") ? "reiniciando…" : "Jogar outra edição"}
                 <BtnSpinner show={busy("restartGame")} />
               </span>
-              <span className="btn-sub">volta ao lobby com os mesmos jogadores</span>
-            </div>
-            <span className="btn-arrow" aria-hidden>
-              →
-            </span>
-          </button>
-        )}
-      </div>
+            </button>
+          )}
 
-      <div className="game-card log-card">
-        <strong>Revelação final</strong>
-        {players.map((p) => {
-          const role = revealed[p.id ?? ""];
-          const roleName = role ? (ROLE_DISPLAY[role] ?? role) : "?";
-          const side = role ? SIDE_OF_ROLE[role] : null;
-          const align =
-            p.alignment === "moradores" || p.alignment === "criaturas" ? p.alignment : null;
-          const showAlign = side === "neutro" && role !== "bras_cubas" && align;
-          return (
-            <p key={p.id}>
-              <strong>{p.name}</strong>
-              {" — "}
-              {roleName}
-              {side && <span className="muted"> ({SIDE_LABEL[side] ?? side})</span>}
-              {showAlign && (
-                <span className="muted"> · alinhamento na crônica: {align}</span>
-              )}
-              {(p.alive === false || p.eliminated || p.expelled) && <span className="muted"> · eliminado</span>}
-            </p>
-          );
-        })}
-      </div>
-
-      <div className="game-card log-card chronicle-card">
-        <strong className="chronicle-title">Crônica da partida</strong>
-        {!historyLoaded ? (
-          <p className="muted">Carregando histórico…</p>
-        ) : (
-          Array.from({ length: totalRounds }, (_, i) => i + 1).map((r) => {
-            const nightActions = allNightActions[r] ?? {};
-            const roundVotes = allRoundVotes[r] ?? {};
-            const botReasonsThisRound = room.debug === true ? allRoundBotVoteReasons[r] ?? {} : {};
-            const nightPublicEntries = publicLog.filter((e) => {
-              if (e.round !== r) return false;
-              const t = e.type ?? "";
-              if (["death", "bite", "terror", "invocation", "dawn"].includes(t)) return true;
-              return t === "special" && isNightPublicSpecial(e);
-            });
-            const dayChronicleOutcomes = publicLog.filter((e) => {
-              if (e.round !== r) return false;
-              const t = e.type ?? "";
-              if (t === "expulsion") return true;
-              return t === "special" && !isNightPublicSpecial(e);
-            });
-            const roundChronicleEnd = dedupeChronicleEndEntries(
-              publicLog.filter((e) => e.round === r && e.type === "chronicle_end"),
-            );
-            const neutralAlignExplain = players.filter((p) => {
-              const role = revealed[p.id ?? ""];
-              const al = p.alignment === "moradores" || p.alignment === "criaturas" ? p.alignment : null;
-              return (role === "curupira" || role === "boitata") && al;
-            });
-            const hasVotes = Object.keys(roundVotes).length > 0;
-            const votesVoidedThisRound = Number(room.voidedDayExpulsionRound ?? NaN) === r;
-            const actionLines = Object.entries(nightActions).flatMap(([pid, act]) => {
-              if (
-                !act?.targetId &&
-                !(act.role === "cangaceiro" && act.action === "pass") &&
-                !(act.role === "delegado" && act.action === "pass") &&
-                !(
-                  ["cartomante", "boitata", "geni", "doutor", "mae_de_santo"].includes(String(act.role)) &&
-                  act.action === "pass"
-                )
-              ) {
-                return [];
-              }
-              const actorName = playerNameById[pid] ?? pid;
-              const targetName = act.targetId
-                ? (playerNameById[act.targetId] ?? act.targetId)
-                : "";
-              const desc = describeNightAction(
-                actorName,
-                act.role ?? "",
-                act.action ?? "",
-                targetName,
-                act.specialAction,
-              );
-              if (!desc) return [];
-              return [{ pid, role: act.role ?? "", desc }];
-            });
-
-            return (
-              <div key={r} className="chronicle-round">
-                <p className="chronicle-phase">Noite {r}</p>
-                {r === 1 &&
-                  neutralAlignExplain
-                    .filter((p) => {
-                      if (Number(room.gameTablePlayerCount ?? 0) !== 5) return true;
-                      const role = revealed[p.id ?? ""];
-                      return role !== "curupira" && role !== "boitata";
-                    })
-                    .map((p) => {
-                    const role = revealed[p.id ?? ""];
-                    const al =
-                      p.alignment === "moradores" || p.alignment === "criaturas" ? p.alignment : null;
-                    if (!role || !al) return null;
-                    const lado =
-                      al === "moradores"
-                        ? "moradores (comunidade da cidade)"
-                        : "criaturas (folclore)";
-                    return (
-                      <p key={p.id} className="chronicle-line chronicle-align-prologue">
-                        <strong>{p.name}</strong> ({ROLE_DISPLAY[role] ?? role}, neutro) alinhou-se aos{" "}
-                        <strong>{lado}</strong> na primeira noite. Na vitória coletiva, passa a contar nesse
-                        time ao comparar quantos jogadores vivos restam de cada lado (criaturas + neutros do
-                        folclore vs. moradores + neutros da comunidade).
-                      </p>
-                    );
-                  })}
-                {actionLines.length === 0 && nightPublicEntries.length === 0 && neutralAlignExplain.length === 0 && (
-                  <p className="muted chronicle-line">Sem registros.</p>
-                )}
-                {actionLines.map(({ pid, role, desc }) => (
-                  <p key={pid} className="chronicle-line">
-                    <span className="chronicle-role">{ROLE_DISPLAY[role] ?? role}</span>
-                    {" · "}
-                    {desc}
-                  </p>
-                ))}
-                {nightPublicEntries.map((e) => (
-                  <p key={e.id} className="chronicle-outcome">
-                    {e.message}
-                  </p>
-                ))}
-                {hasVotes && (
-                  <>
-                    <p className="chronicle-phase">Dia {r}</p>
-                    {Object.entries(roundVotes).map(([voterId, targetId]) => {
-                      const voterName = playerNameById[voterId] ?? voterId;
-                      const targetName = targetId ? (playerNameById[targetId] ?? targetId) : "voto nulo";
-                      return (
-                        <p
-                          key={voterId}
-                          className={
-                            votesVoidedThisRound
-                              ? "chronicle-line chronicle-votes-voided"
-                              : "chronicle-line"
-                          }
-                        >
-                          {voterName} <span className="chronicle-arrow">→</span> {targetName}
-                          {room.debug &&
-                            players.find((p) => p.id === voterId)?.isBot &&
-                            botReasonsThisRound[voterId] && (
-                              <span className="muted" style={{ display: "block", fontSize: "0.85em" }}>
-                                Bot {voterName} — razão do voto:{" "}
-                                {BOT_VOTE_REASON_PT[botReasonsThisRound[voterId] ?? ""] ??
-                                  botReasonsThisRound[voterId]}
-                              </span>
-                            )}
-                        </p>
-                      );
-                    })}
-                    {dayChronicleOutcomes.map((e) => (
-                      <p key={e.id} className="chronicle-outcome">
-                        {e.message}
-                      </p>
-                    ))}
-                  </>
-                )}
-                {roundChronicleEnd.map((e) => (
-                  <p key={e.id} className="chronicle-outcome chronicle-end-rule">
-                    {e.message}
-                  </p>
-                ))}
-              </div>
-            );
-          })
-        )}
-      </div>
-
-      <div className="game-card log-card chronicle-card">
-        <strong className="chronicle-title">Objetivos individuais</strong>
-        {individualWins.length === 0 ? (
-          <p className="muted chronicle-line">Nenhum objetivo individual foi registrado nesta partida.</p>
-        ) : (
-          individualWins.map((w, idx) => (
-            <p key={`${w.playerId}-${w.type}-${w.round}-${idx}`} className="chronicle-line chronicle-individual-win">
-              {individualWinChronicleLine(w, playerNameById[w.playerId] ?? w.playerId)}
-            </p>
-          ))
-        )}
-      </div>
-
-      <div className="game-card log-card chronicle-card mvp-podium-card">
-        <strong className="chronicle-title">Pódio da noite</strong>
-        {!summaryLoaded ? (
-          <p className="muted chronicle-line">Carregando pontuação…</p>
-        ) : summaryError ? (
-          <p className="muted chronicle-line">{summaryError}</p>
-        ) : !summary?.players?.length ? (
-          <p className="muted chronicle-line">Resumo de pontos ainda não disponível.</p>
-        ) : (
-          <>
-            <div className="podium-visual">
-              {[1, 0, 2].map((slot) => {
-                const ordered = [...summary.players!].sort((a, b) => a.rank - b.rank);
-                const row = ordered[slot];
-                if (!row) return <div key={slot} className="podium-slot podium-slot--empty" />;
-                const h = slot === 0 ? "1º" : slot === 1 ? "2º" : "3º";
-                return (
-                  <div key={row.playerId} className={`podium-slot podium-slot--${slot}`}>
-                    <span className="podium-rank">{h}</span>
-                    <span className="podium-name">{row.displayName}</span>
-                    <span className="podium-role muted">{ROLE_DISPLAY[row.role] ?? row.role}</span>
-                    <span className="podium-pts">{row.points} pts</span>
-                  </div>
-                );
-              })}
-            </div>
-            <table className="mvp-table" style={{ marginTop: "1rem" }}>
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Jogador</th>
-                  <th>Papel</th>
-                  <th>Pts</th>
-                  <th>Detalhe</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[...summary.players].sort((a, b) => a.rank - b.rank).map((row) => (
-                  <tr key={row.playerId}>
-                    <td>{row.rank}</td>
-                    <td>{row.displayName}{row.isBot ? <span className="muted"> (bot)</span> : null}</td>
-                    <td>{ROLE_DISPLAY[row.role] ?? row.role}</td>
-                    <td>{row.points}</td>
-                    <td>
-                      <details>
-                        <summary className="mvp-details-summary">ver</summary>
-                        <div className="mvp-breakdown muted">
-                          Suspeitas corretas: {row.breakdown.suspicion} pts · Votos no inimigo:{" "}
-                          {row.breakdown.voteEnemy} pts · Bônus expulsão: {row.breakdown.voteExpelledBonus} pts ·
-                          Investigação: {row.breakdown.investigation} pts · Objetivo cumprido:{" "}
-                          {row.breakdown.objective} pts · Sobrevivência: {row.breakdown.survival} pts · Brás (rodada):{" "}
-                          {row.breakdown.brasRoundTease} pts
-                        </div>
-                      </details>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <p className="muted chronicle-line" style={{ marginTop: "0.75rem" }}>
-              Estes pontos foram adicionados ao seu perfil (ranking global).
-            </p>
-          </>
-        )}
-      </div>
+          <EndPagesNav page={2} onPrev={goPrev} onNext={goNext} />
+        </section>
+      )}
     </div>
   );
 }

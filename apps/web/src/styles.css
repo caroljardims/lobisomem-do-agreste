@@ -4993,6 +4993,269 @@ input::placeholder {
 .pages-nav__btn:not(:disabled):hover { color: var(--ouro-bucare); }
 
 /* ══════════════════════════════════════════════
+   FIM DE JOGO — 3 páginas (edição final)
+   ══════════════════════════════════════════════ */
+
+.fase--fim {
+  background:
+    radial-gradient(ellipse 70% 40% at 50% 0%, rgba(184, 115, 46, 0.14) 0%, transparent 58%),
+    var(--ink-noite);
+}
+
+.fase--fim.page {
+  overflow: hidden;
+  max-height: 100dvh;
+  padding-bottom: 16px;
+}
+
+.fase--fim .online-pill {
+  display: none;
+}
+
+.fase--fim .session-label {
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+}
+
+.screen--fim {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: 8px;
+  position: relative;
+  z-index: 1;
+}
+
+.fim-edition-label {
+  font-family: var(--ff-mono);
+  font-size: 10px;
+  letter-spacing: 0.38em;
+  text-transform: uppercase;
+  text-align: center;
+  color: var(--texto-medio);
+  margin: 0 0 4px;
+}
+
+.fim-lore-toggle {
+  align-self: center;
+  background: none;
+  border: none;
+  font-family: var(--ff-mono);
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--texto-poeira);
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+.fim-lore-body {
+  max-height: 120px;
+  overflow-y: auto;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  border: 1px dashed var(--linha-fina);
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.fim-page {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: 12px;
+}
+
+.folhetim--fim-manchete {
+  margin: 0 auto;
+  width: 100%;
+  max-width: 100%;
+}
+
+.fim-swipe-hint {
+  font-family: var(--ff-italic);
+  font-style: italic;
+  font-size: 14px;
+  text-align: center;
+  color: var(--texto-poeira);
+  margin: 4px 0 0;
+}
+
+.fim-section-eyebrow {
+  font-family: var(--ff-mono);
+  font-size: 11px;
+  letter-spacing: 0.38em;
+  text-transform: uppercase;
+  text-align: center;
+  color: var(--ouro-bucare);
+  margin: 0;
+}
+
+.fim-section-tagline {
+  font-family: var(--ff-italic);
+  font-style: italic;
+  font-size: 14px;
+  text-align: center;
+  color: var(--texto-medio);
+  margin: 0 0 8px;
+}
+
+.fim-revelacao-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.fim-revelacao-row {
+  border-color: var(--linha-fina);
+  background: rgba(8, 6, 4, 0.35);
+}
+
+.fim-revelacao-row.jogador-row--eliminado {
+  opacity: 0.78;
+  filter: grayscale(0.35);
+}
+
+.fim-revelacao-row.jogador-row--eliminado .jogador-row__nome {
+  color: var(--texto-medio);
+  text-decoration-color: rgba(212, 162, 76, 0.5);
+}
+
+.fim-revelacao-row.jogador-row--eliminado .jogador-row__sub {
+  opacity: 0.92;
+}
+
+.fim-revelacao-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.fim-revelacao-info .jogador-row__nome {
+  flex: none;
+}
+
+.fim-podio {
+  margin: 4px 0 12px;
+}
+
+.fim-podio-loading {
+  text-align: center;
+  font-size: 13px;
+  margin: 0 0 8px;
+}
+
+.folhetim--fim-cronica {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.fim-cronica-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--papel-mancha);
+}
+
+.fim-cronica-title {
+  font-family: var(--ff-headline);
+  font-size: 12px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--tinta-papel);
+  margin: 0;
+}
+
+.fim-cronica-num {
+  font-family: var(--ff-mono);
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  color: var(--tinta-papel-mid);
+}
+
+.fim-cronica-body {
+  flex: 1;
+  min-height: 0;
+  max-height: min(42vh, 360px);
+  overflow-y: auto;
+  padding: 12px 16px 16px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.fim-cronica-round {
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(110, 58, 31, 0.2);
+}
+
+.fim-cronica-round:last-child {
+  border-bottom: none;
+}
+
+.fim-cronica-phase {
+  font-family: var(--ff-headline);
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--tijolo-adobe);
+  margin: 0 0 8px;
+}
+
+.fim-cronica-line {
+  font-family: var(--ff-serif);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--tinta-papel);
+  margin: 0 0 6px;
+}
+
+.fim-cronica-outcome {
+  font-family: var(--ff-serif);
+  font-size: 13px;
+  line-height: 1.45;
+  font-style: italic;
+  color: var(--tinta-papel-mid);
+  margin: 0 0 6px;
+}
+
+.fim-cronica-body .chronicle-role {
+  font-family: var(--ff-mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--tijolo-adobe);
+}
+
+.fim-restart-btn {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.fim-pages-footer {
+  margin-top: auto;
+  flex-shrink: 0;
+  padding-top: 8px;
+}
+
+/* ══════════════════════════════════════════════
    CHROME — game screen header bar
    ══════════════════════════════════════════════ */
 

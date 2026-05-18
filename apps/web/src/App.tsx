@@ -166,6 +166,7 @@ export function App() {
 
   const inDayPhase =
     room?.status === "day" && !showBatismo && !showAmanhecer;
+  const inEndedPhase = room?.status === "ended";
 
   function confirmBatismo() {
     setBatismoSeen(true);
@@ -1141,7 +1142,9 @@ export function App() {
               ? " fase--amanhecer"
               : inDayPhase
                 ? " fase--dia"
-                : ""
+                : inEndedPhase
+                  ? " fase--fim"
+                  : ""
         }`}
       >
       <div className="top-bar">
@@ -1157,9 +1160,11 @@ export function App() {
                 ? `rodada ${room.round ?? 1} · noite`
                 : inDayPhase
                   ? `dia ${room?.round ?? 1} · praça`
-                  : room?.status === "day"
-                    ? `rodada ${room.round ?? 1} · dia`
-                    : `rodada ${room?.round ?? 1}`}
+                  : inEndedPhase
+                    ? "edição final"
+                    : room?.status === "day"
+                      ? `rodada ${room.round ?? 1} · dia`
+                      : `rodada ${room?.round ?? 1}`}
         </span>
         <span className="online-pill">
           <span className="dot-online" />
@@ -1550,6 +1555,8 @@ export function App() {
         <EndScreen
           room={room}
           players={players}
+          playerId={playerId}
+          selfGlyph={glyph}
           publicLog={publicLog}
           myRole={myRole}
           loreOpen={loreOpen}
