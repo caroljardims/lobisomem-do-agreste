@@ -74,7 +74,7 @@ const ROLE_XILO: Record<string, string> = {
   iara:      "/assets/xilo-iara.png",
 };
 
-/** Extrai as três seções narrativas do ROLE_LORE para o batismo. */
+/** @deprecated – kept only during refactor; use RoleLoreContent directly */
 function extractBatismoSections(lore: unknown): { quem: string; faz: string; quer: string } {
   if (!lore || typeof lore === "string") {
     return { quem: typeof lore === "string" ? lore : "", faz: "", quer: "" };
@@ -130,6 +130,7 @@ export function App() {
   /** Coronel: primeiro clique arma acusação formal (desabilita voto); segundo confirma. */
   const [coronelAccusationArmed, setCoronelAccusationArmed] = useState(false);
   const [loreOpen, setLoreOpen] = useState(false);
+  const [loreSheetFolhetoOpen, setLoreSheetFolhetoOpen] = useState(false);
   const [brasChosenRole, setBrasChosenRole] = useState("aldeao");
   const [cangConsultTarget, setCangConsultTarget] = useState("");
   const [tiroCertoTarget, setTiroCertoTarget] = useState("");
@@ -158,6 +159,7 @@ export function App() {
 
   function confirmBatismo() {
     setBatismoSeen(true);
+    setLoreOpen(false);
     try { sessionStorage.setItem(`batismo_${roomCode}`, "1"); } catch { /* ignore */ }
   }
 
@@ -599,8 +601,15 @@ export function App() {
   }, [myRole, room?.round, room?.status]);
 
   useEffect(() => {
-    if (room?.round === 1 && room?.status === "night") setLoreOpen(true);
-  }, [room?.round, room?.status]);
+    if (room?.status === "lobby") {
+      setBatismoSeen(false);
+      try { sessionStorage.removeItem(`batismo_${roomCode}`); } catch { /* ignore */ }
+    }
+  }, [room?.status, roomCode]);
+
+  useEffect(() => {
+    if (room?.round === 1 && room?.status === "night" && !batismoSeen) setLoreOpen(true);
+  }, [room?.round, room?.status, batismoSeen]);
 
   useEffect(() => {
     if (room?.status !== "night") return;
@@ -1314,7 +1323,6 @@ export function App() {
       {/* ── Batismo do personagem — noite 1, antes de tudo ── */}
       {showBatismo && myRole && (() => {
         const lore = ROLE_LORE[myRole];
-        const { quem, faz, quer } = extractBatismoSections(lore);
         const xiloSrc = ROLE_XILO[myRole] ?? null;
         const meCard = players.find((p) => p.id === playerId);
         const lado = meCard?.side ?? "morador";
@@ -1352,29 +1360,7 @@ export function App() {
               </button>
 
               <div className="folheto-int__corpo">
-                {quem && (
-                  <>
-                    <div className="folheto-int__sec">quem você é</div>
-                    <p className="folheto-int__txt">{quem}</p>
-                  </>
-                )}
-                {faz && (
-                  <>
-                    <div className="folheto-int__sec">o que você faz</div>
-                    <p className="folheto-int__txt">{faz}</p>
-                  </>
-                )}
-                {quer && (
-                  <>
-                    <div className="folheto-int__sec">o que você quer</div>
-                    <p className="folheto-int__txt">{quer}</p>
-                  </>
-                )}
-                {!quem && !faz && !quer && lore && (
-                  <div className="folheto-int__txt" style={{ marginTop: 0 }}>
-                    <RoleLoreContent lore={lore} />
-                  </div>
-                )}
+                {lore && <RoleLoreContent lore={lore} />}
               </div>
             </div>
 
@@ -1416,33 +1402,70 @@ export function App() {
               criaturas), mesmo com moradores vivos.
             </p>
           )}
-          {myRole && <p className="muted">Seu personagem: {ROLE_DISPLAY[myRole] ?? myRole}</p>}
-
-          {myRole && ROLE_LORE[myRole] && (() => {
+          {/* Etiqueta + folheto inline — compact quando fechado, expande na tela */}
+          {myRole && (() => {
             const meCard = players.find((p) => p.id === playerId);
             const lado = meCard?.side ?? null;
             const ladoLabel = lado === "criatura" ? "Criatura" : lado === "morador" ? "Morador" : lado === "neutro" ? "Neutro" : null;
+            const displayName = ROLE_DISPLAY[myRole]?.replace(/^\S+\s+/, "") ?? myRole;
+            const xiloSrc = ROLE_XILO[myRole] ?? null;
+            const lore = ROLE_LORE[myRole];
+            if (!lore) return null;
+            if (!loreOpen) {
+              return (
+                <button
+                  type="button"
+                  className={`etiqueta${lado === "criatura" ? " etiqueta--criatura" : ""}`}
+                  onClick={() => { setLoreSheetFolhetoOpen(true); setLoreOpen(true); }}
+                >
+                  <div className={`etiqueta__pic${lado === "criatura" ? " etiqueta__pic--criatura" : lado === "neutro" ? " etiqueta__pic--neutro" : ""}`}>
+                    {xiloSrc
+                      ? <img src={xiloSrc} alt={displayName} />
+                      : <span style={{ fontFamily: "var(--ff-display)", fontSize: 13, color: "var(--ouro-claro)" }}>{displayName.charAt(0)}</span>
+                    }
+                  </div>
+                  <div className="etiqueta__info">
+                    <span className="etiqueta__name">{displayName.toUpperCase()}</span>
+                    {ladoLabel && <span className="etiqueta__sub">{ladoLabel}</span>}
+                  </div>
+                  <span className="etiqueta__arrow">▸ reler</span>
+                </button>
+              );
+            }
             return (
-            <div className="role-story-card">
-              <div className="role-story-card-cabec">Folheto N.º 1 · Editora Bucaré</div>
-              <button
-                type="button"
-                className="role-story-toggle"
-                onClick={() => setLoreOpen((v) => !v)}
-              >
-                <span>{ROLE_DISPLAY[myRole] ?? myRole}</span>
-                <span className="role-story-chevron">{loreOpen ? "▲" : "▼"}</span>
-              </button>
-              {ladoLabel && (
-                <div className="role-story-lado" data-lado={lado}>— {ladoLabel} —</div>
-              )}
-              {loreOpen && (
-                <div className="role-story-body">
-                  <p className="role-story-location">Bucaré do Sertão, 1922.</p>
-                  <RoleLoreContent lore={ROLE_LORE[myRole]} />
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div className={`folheto-int folheto-int--${lado ?? "morador"} ${loreSheetFolhetoOpen ? "is-open" : ""}`}>
+                  <button
+                    type="button"
+                    className="folheto-int__capa"
+                    onClick={() => setLoreSheetFolhetoOpen(true)}
+                    aria-expanded={loreSheetFolhetoOpen}
+                  >
+                    <div className="folheto-int__xilo">
+                      {xiloSrc
+                        ? <img src={xiloSrc} alt={displayName} />
+                        : <div className="folheto-int__placeholder">{displayName.toUpperCase()}</div>
+                      }
+                    </div>
+                    <div className="folheto-int__name">{displayName.toUpperCase()}</div>
+                    <div className="folheto-int__lado">— {ladoLabel ?? "Morador"} —</div>
+                    <div className="folheto-int__hint">
+                      {loreSheetFolhetoOpen ? "pronto?" : "toque o folheto"}
+                    </div>
+                  </button>
+                  <div className="folheto-int__corpo">
+                    <RoleLoreContent lore={lore} />
+                  </div>
                 </div>
-              )}
-            </div>
+                <button
+                  type="button"
+                  className="btn-link"
+                  style={{ alignSelf: "center", fontSize: 11, letterSpacing: "0.18em" }}
+                  onClick={() => { setLoreOpen(false); setLoreSheetFolhetoOpen(false); }}
+                >
+                  ← fechar folheto
+                </button>
+              </div>
             );
           })()}
 

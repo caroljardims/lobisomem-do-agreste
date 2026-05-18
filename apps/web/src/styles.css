@@ -3416,6 +3416,67 @@ input::placeholder {
 }
 
 /* ══════════════════════════════════════════════
+   LORE SHEET — bottom sheet com folheto (reler)
+   ══════════════════════════════════════════════ */
+.lore-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+.lore-sheet__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+}
+.lore-sheet__panel {
+  position: relative;
+  z-index: 1;
+  background: var(--ink-noite);
+  border-radius: 14px 14px 0 0;
+  border-top: 1px solid var(--linha-fina);
+  max-height: 92vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 16px 48px;
+  animation: lore-sheet-up 340ms cubic-bezier(.2,.8,.3,1) both;
+}
+@keyframes lore-sheet-up {
+  from { transform: translateY(100%); opacity: 0; }
+  to   { transform: translateY(0);   opacity: 1; }
+}
+.lore-sheet__handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 0 4px;
+}
+.lore-sheet__handle::before {
+  content: '';
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--linha-media);
+}
+.lore-sheet__close {
+  position: absolute;
+  top: 10px;
+  right: 16px;
+  font-family: var(--ff-mono);
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--texto-poeira);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+}
+.lore-sheet__close:hover { color: var(--ouro-bucare); }
+
+/* ══════════════════════════════════════════════
    FOLHETO INTERATIVO — batismo screen (unfolding cordel)
    ══════════════════════════════════════════════ */
 
@@ -3538,7 +3599,7 @@ input::placeholder {
   font-family: var(--ff-headline);
   font-size: 11px;
   letter-spacing: 0.28em;
-  color: var(--tijolo-adobe);
+  color: #5c1f10;
   text-transform: uppercase;
   margin-top: 12px;
   border-bottom: 1px solid var(--tinta-papel-faint);
@@ -3550,8 +3611,34 @@ input::placeholder {
   font-family: var(--ff-serif);
   font-size: 14px;
   line-height: 1.5;
-  color: var(--tinta-papel);
+  color: #1a1008;
   margin-top: 6px;
+}
+
+/* lore-card overrides for parchment (folheto-int) context */
+.folheto-int__corpo .lore-card__body,
+.folheto-int__corpo .lore-card__narrative {
+  color: #1a1008;
+  font-size: 14px;
+  line-height: 1.55;
+}
+.folheto-int__corpo .lore-card__extra {
+  border-top-color: var(--tinta-papel-faint);
+}
+.folheto-int__corpo .lore-card__section-title {
+  color: #5c1f10;
+  font-family: var(--ff-headline);
+}
+.folheto-int__corpo .lore-card__section-body {
+  color: #1a1008;
+}
+.folheto-int__corpo .lore-card__section-body em {
+  color: #1a1008;
+}
+.folheto-int__corpo .lore-card__aside {
+  background: rgba(43, 31, 18, 0.07);
+  border-left-color: rgba(43, 31, 18, 0.3);
+  color: var(--tinta-papel-mid);
 }
 
 /* ══════════════════════════════════════════════
