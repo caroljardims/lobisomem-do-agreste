@@ -52,6 +52,16 @@ export const submitVote = onCall(async (req) => {
     createdAt: FieldValue.serverTimestamp(),
   });
 
+  const votesSnap = await roomRef.collection("votes").doc(String(round)).get();
+  const votesDoc = votesSnap.data() ?? {};
+  const eligible = players.filter((p) => canSubmitExpulsionVote(p));
+  const allVotesIn =
+    eligible.length === 0 ||
+    eligible.every((p) => Object.hasOwn(votesDoc, p.id));
+  if (allVotesIn) {
+    await finalizeDay(code, round);
+  }
+
   return { ok: true };
 });
 

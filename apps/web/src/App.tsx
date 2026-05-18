@@ -18,11 +18,6 @@ import { SaciGorroModal, type PendingGorro } from "./components/SaciGorroModal.j
 import { useAuth } from "./context/AuthContext.js";
 import { auth, call } from "./firebase.js";
 import {
-  canShowCangaceiroTiro,
-  canShowCoronelAccuse,
-  hasPendingSaciGorro,
-} from "./dayActions.js";
-import {
   ROLE_DISPLAY,
   ROLE_LORE,
   ROLE_XILO,
@@ -41,10 +36,15 @@ import { isLocalDebug } from "./debug/isLocalDebug.js";
 import { DEBUG_ROLE_LABELS } from "./debug/roleOptions.js";
 import { NIGHT_ROLE_ACTION_SECONDS } from "./lib/nightTurnConstants.js";
 import { mapCallableError } from "./lib/callableErrors.js";
-import { canBeExpulsionVoteTarget, canSubmitExpulsionVote } from "./lib/playerVote.js";
 import type { PlayerDoc, RoomDoc, View } from "./types.js";
 import { BtnSpinner } from "./components/BtnSpinner.js";
 import { EndScreen } from "./components/screens/EndScreen.js";
+import { AmanhecerScreen } from "./components/screens/AmanhecerScreen.js";
+import { DayScreen } from "./components/screens/DayScreen.js";
+import {
+  buildRoundFolhetim,
+  folhetimEditionNumber,
+} from "./lib/amanhecerContent.js";
 import { NightScreen } from "./components/screens/NightScreen.js";
 import { AVATAR_GLYPHS } from "./lib/playerGlyph.js";
 import { MinhaContaScreen } from "./components/screens/MinhaContaScreen.js";
@@ -143,11 +143,29 @@ export function App() {
   });
   const [batismoFolhetoOpen, setBatismoFolhetoOpen] = useState(false);
 
+  const [folhetimDismissedRound, setFolhetimDismissedRound] = useState(0);
+
   const showBatismo =
     room?.status === "night" &&
     Number(room?.round ?? 0) === 1 &&
     !!myRole &&
     !batismoSeen;
+
+  const currentRound = room?.round ?? 1;
+  const showAmanhecer =
+    room?.status === "day" &&
+    !showBatismo &&
+    currentRound >= 1 &&
+    folhetimDismissedRound !== currentRound;
+
+  const roundFolhetim = useMemo(
+    () => buildRoundFolhetim(publicLog, currentRound),
+    [publicLog, currentRound],
+  );
+  const folhetimEdition = folhetimEditionNumber(currentRound);
+
+  const inDayPhase =
+    room?.status === "day" && !showBatismo && !showAmanhecer;
 
   function confirmBatismo() {
     setBatismoSeen(true);
@@ -217,6 +235,16 @@ export function App() {
     setSuspicionSent(false);
     setSuspicionTarget("");
   }, [room?.status, room?.round]);
+
+  useEffect(() => {
+    if (!room) return;
+    const r = room.round ?? 0;
+    if (room.status === "lobby" || room.status === "ended" || r === 0) {
+      setFolhetimDismissedRound(0);
+      return;
+    }
+    setFolhetimDismissedRound((prev) => (r < prev ? 0 : prev));
+  }, [room?.status, room?.round, roomCode]);
 
   useEffect(() => {
     if (!authReady || user) return;
@@ -1105,7 +1133,17 @@ export function App() {
           />
         </Suspense>
       )}
-      <div className={`page${isDebugSession ? " page--debug" : ""}${room?.status === "night" ? " fase--noite" : room?.status === "day" ? " fase--dia" : ""}`}>
+      <div
+        className={`page${isDebugSession ? " page--debug" : ""}${
+          room?.status === "night"
+            ? " fase--noite"
+            : showAmanhecer
+              ? " fase--amanhecer"
+              : inDayPhase
+                ? " fase--dia"
+                : ""
+        }`}
+      >
       <div className="top-bar">
         <button type="button" className="back-link" onClick={leave}>
           ← sair
@@ -1113,17 +1151,21 @@ export function App() {
         <span className="session-label">
           {inLobby
             ? "lobby"
-            : room?.status === "night"
-              ? `rodada ${room.round ?? 1} · noite`
-              : room?.status === "day"
-                ? `rodada ${room.round ?? 1} · dia`
-                : `rodada ${room?.round ?? 1}`}
+            : showAmanhecer
+              ? `amanhecer · dia ${room?.round ?? 1}`
+              : room?.status === "night"
+                ? `rodada ${room.round ?? 1} · noite`
+                : inDayPhase
+                  ? `dia ${room?.round ?? 1} · praça`
+                  : room?.status === "day"
+                    ? `rodada ${room.round ?? 1} · dia`
+                    : `rodada ${room?.round ?? 1}`}
         </span>
         <span className="online-pill">
           <span className="dot-online" />
           {players.length}
         </span>
-        {room?.status === "night" && myRole && !showBatismo ? (
+        {((room?.status === "night" && myRole && !showBatismo) || inDayPhase) && myRole ? (
           <button
             type="button"
             className="back-link noite-help-btn"
@@ -1389,455 +1431,49 @@ export function App() {
         />
       )}
 
-      {room && room.status === "day" && !showBatismo && (
-        <div className="game-card">
-          <p>
-            <strong>Dia {room.round ?? 1}</strong>
-          </p>
-          {typeof room.maxRounds === "number" && room.maxRounds > 0 && (
-            <p className="muted" style={{ marginTop: "0.35rem", lineHeight: 1.45 }}>
-              <strong>Lua cheia:</strong> rodada atual <strong>{room.round ?? 1}</strong> — o relógio da cidade
-              permite até <strong>{room.maxRounds}</strong> rodadas numeradas. Se, após um amanhecer, a rodada
-              passar de <strong>{room.maxRounds}</strong>, o folclore vence na hora (vitória coletiva das
-              criaturas), mesmo com moradores vivos.
-            </p>
-          )}
-          {/* Etiqueta + folheto inline — compact quando fechado, expande na tela */}
-          {myRole && (() => {
-            const meCard = players.find((p) => p.id === playerId);
-            const lado = meCard?.side ?? null;
-            const ladoLabel = lado === "criatura" ? "Criatura" : lado === "morador" ? "Morador" : lado === "neutro" ? "Neutro" : null;
-            const displayName = ROLE_DISPLAY[myRole]?.replace(/^\S+\s+/, "") ?? myRole;
-            const xiloSrc = ROLE_XILO[myRole] ?? null;
-            const lore = ROLE_LORE[myRole];
-            if (!lore) return null;
-            if (!loreOpen) {
-              return (
-                <button
-                  type="button"
-                  className={`etiqueta${lado === "criatura" ? " etiqueta--criatura" : ""}`}
-                  onClick={() => { setLoreSheetFolhetoOpen(true); setLoreOpen(true); }}
-                >
-                  <div className={`etiqueta__pic${lado === "criatura" ? " etiqueta__pic--criatura" : lado === "neutro" ? " etiqueta__pic--neutro" : ""}`}>
-                    {xiloSrc
-                      ? <img src={xiloSrc} alt={displayName} />
-                      : <span style={{ fontFamily: "var(--ff-display)", fontSize: 13, color: "var(--ouro-claro)" }}>{displayName.charAt(0)}</span>
-                    }
-                  </div>
-                  <div className="etiqueta__info">
-                    <span className="etiqueta__name">{displayName.toUpperCase()}</span>
-                    {ladoLabel && <span className="etiqueta__sub">{ladoLabel}</span>}
-                  </div>
-                  <span className="etiqueta__arrow">▸ reler</span>
-                </button>
-              );
-            }
-            return (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <div className={`folheto-int folheto-int--${lado ?? "morador"} ${loreSheetFolhetoOpen ? "is-open" : ""}`}>
-                  <button
-                    type="button"
-                    className="folheto-int__capa"
-                    onClick={() => setLoreSheetFolhetoOpen(true)}
-                    aria-expanded={loreSheetFolhetoOpen}
-                  >
-                    <div className="folheto-int__xilo">
-                      {xiloSrc
-                        ? <img src={xiloSrc} alt={displayName} />
-                        : <div className="folheto-int__placeholder">{displayName.toUpperCase()}</div>
-                      }
-                    </div>
-                    <div className="folheto-int__name">{displayName.toUpperCase()}</div>
-                    <div className="folheto-int__lado">— {ladoLabel ?? "Morador"} —</div>
-                    <div className="folheto-int__hint">
-                      {loreSheetFolhetoOpen ? "pronto?" : "toque o folheto"}
-                    </div>
-                  </button>
-                  <div className="folheto-int__corpo">
-                    <RoleLoreContent lore={lore} />
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className="btn-link"
-                  style={{ alignSelf: "center", fontSize: 11, letterSpacing: "0.18em" }}
-                  onClick={() => { setLoreOpen(false); setLoreSheetFolhetoOpen(false); }}
-                >
-                  ← fechar folheto
-                </button>
-              </div>
-            );
-          })()}
+      {showAmanhecer && room && (
+        <AmanhecerScreen
+          room={room}
+          publicLog={publicLog}
+          privateLog={privateLog}
+          onDismiss={() => setFolhetimDismissedRound(currentRound)}
+        />
+      )}
 
-
-          {(() => {
-            const myPlayer = players.find((p) => p.id === playerId);
-            const currentRound = room.round ?? 1;
-            const isNightPublicSpecial = (e: { message?: string }) => {
-              const m = String(e.message ?? "");
-              return m.startsWith("Alinhamento (1ª noite):") || m.includes("Mesa de cinco: por regra do cordel");
-            };
-            const dawnEntries = publicLog.filter((e) => {
-              if (e.round !== currentRound) return false;
-              const t = e.type ?? "";
-              if (["death", "bite", "terror", "invocation", "dawn"].includes(t)) return true;
-              return t === "special" && isNightPublicSpecial(e);
-            });
-            const dayFolhetimOutcomes = publicLog.filter((e) => {
-              if (e.round !== currentRound) return false;
-              const t = e.type ?? "";
-              if (t === "expulsion") return true;
-              return t === "special" && !isNightPublicSpecial(e);
-            });
-            const hasDeathOrElimination = dawnEntries.some((e) => e.type === "death");
-            const outOfGame = players.filter((p) => p.alive === false || p.eliminated || p.expelled);
-            const canVote = !!(myPlayer && canSubmitExpulsionVote(myPlayer));
-            const hasVoted =
-              Boolean(playerId) && Object.hasOwn(dayRoundVotes, playerId);
-            const eligibleVoters = players.filter((p) => canSubmitExpulsionVote(p));
-            const allVotesIn =
-              eligibleVoters.length === 0 ||
-              eligibleVoters.every((p) => Object.hasOwn(dayRoundVotes, p.id ?? ""));
-            const validExpulsionTargetIds = new Set(
-              players.filter(canBeExpulsionVoteTarget).map((p) => p.id ?? ""),
-            );
-            const rawResolved = canVote && hasVoted ? (dayRoundVotes[playerId] ?? "") : voteTarget;
-            const resolvedVoteTarget =
-              rawResolved && validExpulsionTargetIds.has(rawResolved) ? rawResolved : "";
-            const voteSelectValue = resolvedVoteTarget;
-
-            return (
-              <div className="stack stack--dense day-phase">
-                <div className="game-card log-card day-section folhetim-card">
-                  <div className="folhetim-masthead">
-                    <div className="folhetim-date-row">Anno {room.round ?? 1} · N.º {((room.round ?? 1) - 1) * 2 + 1} &nbsp;·&nbsp; Bucaré, Sertão</div>
-                    <div className="folhetim-title">Folhetim de Bucaré</div>
-                    <div className="folhetim-lead">Gazeta do folclore — edição especial de amanhecer</div>
-                  </div>
-                  {dawnEntries.filter((e) => e.type !== "dawn").length > 0 && (
-                    <div className="folhetim-manchete">
-                      {dawnEntries.find((e) => e.type === "death")
-                        ? "Morte na Madrugada"
-                        : dawnEntries.find((e) => e.type === "bite")
-                        ? "Marcas Estranhas na Cidade"
-                        : dawnEntries.find((e) => e.type === "terror")
-                        ? "Terror no Alvorecer"
-                        : "Notícias do Amanhecer"}
-                    </div>
-                  )}
-                  <div className="folhetim-corpo">
-                  {dawnEntries.filter((e) => e.type !== "dawn").map((e) => (
-                    <p key={e.id}>{e.message}</p>
-                  ))}
-                  {!hasDeathOrElimination && (
-                    <p className="muted">A noite passou em silêncio. Ninguém foi eliminado.</p>
-                  )}
-                  </div>
-                  {dayFolhetimOutcomes.length > 0 && (
-                    <div className="folhetim-corpo folhetim-corpo-single">
-                    {dayFolhetimOutcomes.map((e) => (
-                      <p key={e.id}>{e.message}</p>
-                    ))}
-                    </div>
-                  )}
-                  {privateLog.length > 0 && (
-                    <div className="folhetim-private-section">
-                    {privateLog.map((e) => (
-                      <p key={e.id} className="private-log-entry">🔒 {e.message}</p>
-                    ))}
-                    </div>
-                  )}
-                  {outOfGame.length > 0 && (
-                    <div className="folhetim-out-of-game">
-                      Fora do jogo: {outOfGame.map((p) => p.name).join(", ")}
-                    </div>
-                  )}
-                </div>
-                <div className="game-card chat-card day-section">
-                  <strong>Chat</strong>
-                  {chat.map((m) => (
-                    (m as { type?: string }).type === "vote" ? (
-                      <p key={m.id} className="muted" style={{ fontSize: "0.8em" }}>
-                        {m.text}
-                      </p>
-                    ) : (
-                      <p key={m.id}>
-                        <strong>{m.name}:</strong> {m.text}
-                      </p>
-                    )
-                  ))}
-                </div>
-                {(() => {
-                  const isDead =
-                    myPlayer?.alive === false ||
-                    myPlayer?.eliminated ||
-                    myPlayer?.expelled;
-                  if (isDead && !myPlayer?.invoked) {
-                    return (
-                      <p className="muted day-section">
-                        Você não pode enviar mensagens.
-                      </p>
-                    );
-                  }
-                  if (myPlayer?.silenced) {
-                    return (
-                      <p className="muted day-section">
-                        Você está em silêncio e não pode falar agora.
-                      </p>
-                    );
-                  }
-                  return (
-                    <div className="row day-section">
-                      <input
-                        value={chatText}
-                        onChange={(e) => setChatText(e.target.value)}
-                        placeholder="Mensagem…"
-                      />
-                      <button
-                        type="button"
-                        className="btn-with-spinner"
-                        disabled={!chatText.trim() || anyPending}
-                        onClick={() =>
-                          void run("sendChatMessage", { roomCode, text: chatText }, "chatSend")
-                            .then(() => setChatText(""))
-                            .catch(() => {})
-                        }
-                      >
-                        {busy("chatSend") ? "enviando…" : "Enviar"}
-                        <BtnSpinner show={busy("chatSend")} />
-                      </button>
-                    </div>
-                  );
-                })()}
-                {room.votingOpen === true &&
-                  (!canVote ? (
-                  <p className="muted day-section">Você não tem direito a voto nesta rodada.</p>
-                ) : (
-                  <div className="day-section vote-block">
-                    <label>Seu voto - vote para expulsar um suspeito</label>
-                    <select
-                      value={voteSelectValue}
-                      disabled={hasVoted || anyPending || (myRole === "coronel" && coronelAccusationArmed)}
-                      onChange={(e) => setVoteTarget(e.target.value)}
-                    >
-                      <option value="">Nulo</option>
-                      {players
-                        .filter((p) => p.id !== playerId && canBeExpulsionVoteTarget(p))
-                        .map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {formatDebugPlayerOpt(p)}
-                          </option>
-                        ))}
-                    </select>
-                    <div
-                      className="row vote-control-row"
-                      style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginTop: 8 }}
-                    >
-                      <button
-                        type="button"
-                        className={hasVoted ? "vote-sent" : undefined}
-                        disabled={
-                          hasVoted ||
-                          anyPending ||
-                          (myRole === "coronel" && coronelAccusationArmed)
-                        }
-                        onClick={() =>
-                          void run("submitVote", { roomCode, targetId: resolvedVoteTarget || null }, "vote").catch(
-                            () => {},
-                          )
-                        }
-                      >
-                        <span className="btn-with-spinner">
-                          {busy("vote") ? "enviando…" : hasVoted ? "✓ Voto enviado" : "Votar"}
-                          <BtnSpinner show={busy("vote")} />
-                        </span>
-                      </button>
-                      {canShowCoronelAccuse(myRole, room, myPlayer) && (
-                        <>
-                          <button
-                            type="button"
-                            disabled={
-                              anyPending ||
-                              dayActionSent === "coronel" ||
-                              (coronelAccusationArmed && !resolvedVoteTarget)
-                            }
-                            className={
-                              dayActionSent === "coronel"
-                                ? "vote-sent"
-                                : coronelAccusationArmed
-                                  ? "primary-btn"
-                                  : undefined
-                            }
-                            onClick={() => {
-                              if (dayActionSent === "coronel") return;
-                              if (!coronelAccusationArmed) {
-                                setCoronelAccusationArmed(true);
-                                return;
-                              }
-                              void run(
-                                "coronelStartAccusation",
-                                { roomCode, targetId: resolvedVoteTarget },
-                                "coronelAccuse",
-                              )
-                                .then(() => {
-                                  setDayActionSent("coronel");
-                                  setCoronelAccusationArmed(false);
-                                })
-                                .catch(() => {});
-                            }}
-                          >
-                            <span className="btn-with-spinner">
-                              {busy("coronelAccuse")
-                                ? "enviando…"
-                                : dayActionSent === "coronel"
-                                  ? "✓ Acusação enviada"
-                                  : coronelAccusationArmed
-                                    ? "Confirmar acusação formal"
-                                    : "Acusação formal"}
-                              <BtnSpinner show={busy("coronelAccuse")} />
-                            </span>
-                          </button>
-                          {coronelAccusationArmed && dayActionSent !== "coronel" && (
-                            <button
-                              type="button"
-                              className="chip-btn"
-                              disabled={anyPending}
-                              onClick={() => setCoronelAccusationArmed(false)}
-                            >
-                              Cancelar
-                            </button>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                {isHost && room.votingOpen && (
-                  <div className="day-section vote-block">
-                    <button
-                      type="button"
-                      className={allVotesIn ? "primary-btn" : undefined}
-                      disabled={anyPending || !allVotesIn}
-                      onClick={() => void run("advanceDay", { roomCode }, "advanceDay").catch(() => {})}
-                    >
-                      <span className="btn-with-spinner">
-                        {busy("advanceDay")
-                          ? "aguarda…"
-                          : allVotesIn
-                            ? "Encerrar dia e contar votos"
-                            : `Aguardando votos — ${eligibleVoters.filter((p) => Object.hasOwn(dayRoundVotes, p.id ?? "")).length} de ${eligibleVoters.length}`}
-                        <BtnSpinner show={busy("advanceDay")} />
-                      </span>
-                    </button>
-                  </div>
-                )}
-                {isHost && room.pendingNightStart && !hasPendingSaciGorro(room) && !room.pendingBrasChoice && (
-                  <div className="day-section vote-block">
-                    <button
-                      type="button"
-                      className="primary-btn"
-                      disabled={anyPending}
-                      onClick={() => void run("startNight", { roomCode }, "startNight").catch(() => {})}
-                    >
-                      <span className="btn-with-spinner" style={{ width: "100%" }}>
-                        {busy("startNight") ? "recolhendo…" : "Toque de recolher"}
-                        <BtnSpinner show={busy("startNight")} />
-                      </span>
-                    </button>
-                  </div>
-                )}
-                {canShowCangaceiroTiro(myRole, myPlayer) && (
-                  <div
-                    className="row day-actions-row day-section"
-                    style={{ flexDirection: "column", alignItems: "stretch", gap: 8 }}
-                  >
-                    <span className="muted day-actions-label">Tiro Certo (uma vez na partida)</span>
-                    <label className="field-label">Alvo do disparo</label>
-                    <select
-                      className="vote-select"
-                      value={tiroCertoTarget}
-                      onChange={(e) => {
-                        setTiroCertoTarget(e.target.value);
-                        setTiroPreview(null);
-                      }}
-                    >
-                      <option value="">—</option>
-                      {players
-                        .filter((p) => p.id !== playerId && p.alive !== false && !p.eliminated && !p.expelled)
-                        .map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {formatDebugPlayerOpt(p)}
-                          </option>
-                        ))}
-                    </select>
-                    {tiroPreview && (
-                      <p className="muted" style={{ margin: 0 }}>
-                        {tiroPreview.consulted
-                          ? `Geni já conversou com essa pessoa: parece ser ${tiroPreview.hint}.`
-                          : "Geni ainda não conversou com essa pessoa — se disparar, será às cegas."}
-                      </p>
-                    )}
-                    <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-                      <button
-                        type="button"
-                        className="chip-btn chip-btn--with-spinner"
-                        disabled={!tiroCertoTarget || anyPending || busy("tiroPrev")}
-                        onClick={async () => {
-                          try {
-                            const r = await run(
-                              "cangaceiroTiroCerto",
-                              { roomCode, targetId: tiroCertoTarget, stage: "preview" },
-                              "tiroPrev",
-                            );
-                            setTiroPreview({
-                              consulted: Boolean(r.consulted),
-                              hint: (r.hint as string | undefined) ?? undefined,
-                            });
-                          } catch {
-                            /* setErr em run */
-                          }
-                        }}
-                      >
-                        <span className="btn-with-spinner">
-                          {busy("tiroPrev") ? "…" : "Checar com Geni"}
-                          <BtnSpinner show={busy("tiroPrev")} />
-                        </span>
-                      </button>
-                      <button
-                        type="button"
-                        className="chip-btn chip-btn--with-spinner"
-                        disabled={!tiroCertoTarget || anyPending || dayActionSent === "tiro" || busy("tiroCommit")}
-                        onClick={async () => {
-                          try {
-                            await run(
-                              "cangaceiroTiroCerto",
-                              { roomCode, targetId: tiroCertoTarget, stage: "commit" },
-                              "tiroCommit",
-                            );
-                            setDayActionSent("tiro");
-                            setTiroCertoTarget("");
-                            setTiroPreview(null);
-                          } catch {
-                            /* setErr em run */
-                          }
-                        }}
-                      >
-                        <span className="btn-with-spinner">
-                          {busy("tiroCommit")
-                            ? "…"
-                            : dayActionSent === "tiro"
-                              ? "✓ Tiro disparado"
-                              : "Confirmar disparo"}
-                          <BtnSpinner show={busy("tiroCommit")} />
-                        </span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-        </div>
+      {inDayPhase && room && (
+        <DayScreen
+          room={room}
+          roomCode={roomCode}
+          players={players}
+          playerId={playerId}
+          myRole={myRole}
+          chat={chat}
+          dayRoundVotes={dayRoundVotes}
+          roundFolhetim={roundFolhetim}
+          folhetimEdition={folhetimEdition}
+          currentRound={currentRound}
+          isHost={isHost}
+          voteTarget={voteTarget}
+          setVoteTarget={setVoteTarget}
+          chatText={chatText}
+          setChatText={setChatText}
+          coronelAccusationArmed={coronelAccusationArmed}
+          setCoronelAccusationArmed={setCoronelAccusationArmed}
+          dayActionSent={dayActionSent}
+          setDayActionSent={setDayActionSent}
+          tiroCertoTarget={tiroCertoTarget}
+          setTiroCertoTarget={setTiroCertoTarget}
+          tiroPreview={tiroPreview}
+          setTiroPreview={setTiroPreview}
+          loreOpen={loreOpen}
+          setLoreOpen={setLoreOpen}
+          loreSheetFolhetoOpen={loreSheetFolhetoOpen}
+          setLoreSheetFolhetoOpen={setLoreSheetFolhetoOpen}
+          formatPlayerName={formatDebugPlayerOpt}
+          run={run}
+          busy={busy}
+          anyPending={anyPending}
+        />
       )}
 
       {myRole === "saci" &&
