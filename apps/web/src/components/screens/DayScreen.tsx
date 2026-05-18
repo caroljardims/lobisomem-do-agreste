@@ -600,7 +600,7 @@ export function DayScreen({
                 setLoreSheetFolhetoOpen(false);
               }}
             >
-              ← fechar folheto
+              ← fechar ficha
             </button>
           </div>
         </div>

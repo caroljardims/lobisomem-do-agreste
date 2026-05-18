@@ -333,7 +333,7 @@ export function NightScreen({
             setLoreSheetFolhetoOpen(false);
           }}
         >
-          ← fechar folheto
+          ← fechar ficha
         </button>
       </div>
     );

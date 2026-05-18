@@ -42,6 +42,14 @@ const REACT: string[] = [
   "Isso é grave. {victim} foi.",
   "{victim} não merecia.",
   "A cidade fica mais fraca sem {victim}.",
+  "Sem {victim}, a praça fica diferente.",
+  "Puxa vida, {victim}...",
+  "Difícil acreditar em {victim}.",
+  "O povo de Bucaré sente falta de {victim}.",
+  "Com {victim} fora, sobra desconfiança.",
+  "Que notícia dura sobre {victim}.",
+  "{victim} deixou um buraco aqui.",
+  "Isso com {victim} não faz sentido pra mim.",
 ];
 
 const DEFLECT: string[] = [

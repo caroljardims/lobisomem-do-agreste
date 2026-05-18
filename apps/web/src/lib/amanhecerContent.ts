@@ -97,6 +97,11 @@ export function isNightPublicSpecialEntry(e: PublicLogEntry): boolean {
   );
 }
 
+/** Prisão do Delegado — publicada no amanhecer (noite), não na praça. */
+export function isDelegadoPrisonPublicEntry(e: PublicLogEntry): boolean {
+  return String(e.message ?? "").includes("ordenou a prisão");
+}
+
 /** Expulsão e eventos especiais do dia — mesma edição da madrugada, parágrafos extras. */
 export function filterDayPlazaPublicLog(
   publicLog: PublicLogEntry[],
@@ -106,7 +111,11 @@ export function filterDayPlazaPublicLog(
     if (e.round !== round) return false;
     const t = e.type ?? "";
     if (t === "expulsion") return true;
-    return t === "special" && !isNightPublicSpecialEntry(e);
+    return (
+      t === "special" &&
+      !isNightPublicSpecialEntry(e) &&
+      !isDelegadoPrisonPublicEntry(e)
+    );
   });
 }
 

@@ -4,7 +4,7 @@ import { db, loadPlayers, loadSecrets } from "../helpers.js";
 import { finalizeDay } from "../lib/finalize.js";
 import { canBeExpulsionVoteTarget, canSubmitExpulsionVote } from "../lib/playerVote.js";
 import { findPlayer, requireAuth } from "./shared.js";
-import { buildBotContext, getBotMessage } from "../lib/botChat/index.js";
+import { buildBotContext, getBotMessage, normalizePhraseKey } from "../lib/botChat/index.js";
 import { parseBotKnowledge } from "../lib/botKnowledge/merge.js";
 
 export const submitVote = onCall(async (req) => {
@@ -145,7 +145,10 @@ export const sendChatMessage = onCall(async (req) => {
             : null,
         botKnowledge: kbRow,
       });
-      const reply = getBotMessage(ctx, Math.random);
+      const avoidPhrases = new Set(
+        chatHistory.map((m) => normalizePhraseKey(m.text)).filter(Boolean),
+      );
+      const reply = getBotMessage(ctx, Math.random, { avoidPhrases });
       await roomRef.collection("chat").add({
         playerId: bot.id,
         name: bot.name,

@@ -7,6 +7,7 @@ export {
   getBotSegmentsForDayOpen,
   pickAccuseTarget,
   runBotBehavior,
+  type BotPhraseAvoidOptions,
 } from "./orchestrator.js";
 export { getCharacterConfig, CHARACTER_CONFIGS } from "./characterConfigs.js";
-export { selectPhrase, fillTemplates } from "./phraseSelection.js";
+export { selectPhrase, fillTemplates, normalizePhraseKey } from "./phraseSelection.js";

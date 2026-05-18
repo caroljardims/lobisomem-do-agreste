@@ -8,8 +8,8 @@ import {
   neutroTree,
 } from "./behaviorTree.js";
 import { buildBotContext } from "./context.js";
-import { getBotMessagesForDayOpen, getBotMessage } from "./orchestrator.js";
-import { fillTemplates, selectPhrase } from "./phraseSelection.js";
+import { getBotMessagesForDayOpen, getBotMessage, getBotSegmentsForDayOpen } from "./orchestrator.js";
+import { fillTemplates, normalizePhraseKey, selectPhrase } from "./phraseSelection.js";
 import type { BotContext, LivingPlayerRef } from "./types.js";
 
 function rng(seed = 0.42): () => number {
@@ -144,4 +144,38 @@ test("integration: getBotMessagesForDayOpen yields lines when not silent", () =>
   assert.ok(Array.isArray(lines));
   assert.ok(lines.length >= 1);
   for (const line of lines) assert.ok(line.length > 3);
+});
+
+test("getBotSegmentsForDayOpen avoids duplicate phrases in burst and across bots", () => {
+  const deathLog = [
+    {
+      type: "death",
+      message: "A cidade acorda com uma ausência. Gabriela foi encontrado(a) sem vida. Era Doutor.",
+    },
+  ];
+  const sharedAvoid = new Set<string>();
+  const roles = ["aldeao", "aldeao", "doutor", "coronel", "cartomante"] as const;
+  const allTexts: string[] = [];
+
+  for (let i = 0; i < roles.length; i++) {
+    const ctx = buildBotContext({
+      ...baseArgs,
+      selfPlayerId: `b${i}`,
+      role: roles[i]!,
+      publicLogThisDawn: deathLog,
+      rng: rng(0.15 + i * 0.11),
+    });
+    const segments = getBotSegmentsForDayOpen(ctx, rng(0.4 + i * 0.07), {
+      avoidPhrases: sharedAvoid,
+    });
+    for (const seg of segments) {
+      const key = normalizePhraseKey(seg.text);
+      assert.ok(!sharedAvoid.has(key), `frase repetida: ${seg.text}`);
+      sharedAvoid.add(key);
+      allTexts.push(seg.text);
+    }
+  }
+
+  assert.ok(allTexts.length >= 3);
+  assert.equal(new Set(allTexts.map(normalizePhraseKey)).size, allTexts.length);
 });

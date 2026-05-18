@@ -18,7 +18,7 @@ import { finalizeMvpLedgerIfNeeded } from "./endGameScoring.js";
 import { grantAldeaoObjectiveIfMoradoresWon, grantObjectiveMvp } from "./playerPrivateScore.js";
 import { scoreBrasRoundTease, scoreMvpAtDawn, scoreMvpVotesAfterDay } from "./mvpDawnAndVoteScoring.js";
 import { beginSaciGorroOffer, runPostExpulsionTail } from "./saciGorro.js";
-import { buildBotContext, getBotSegmentsForDayOpen } from "./botChat/index.js";
+import { buildBotContext, getBotSegmentsForDayOpen, normalizePhraseKey } from "./botChat/index.js";
 import { mergeBotKnowledgeFromNightResolve } from "./botKnowledge/applyFromNightResolve.js";
 import { analyzePriorRoundSemanticChat } from "./botKnowledge/analyzeChat.js";
 import type { ChatSemanticIngestRow } from "./botKnowledge/analyzeChat.js";
@@ -766,6 +766,7 @@ export async function finalizeNight(roomCode: string, round: number) {
     const padrePlayerId = players.find((pl) => secrets[pl.id]?.role === "padre")?.id ?? null;
 
     const shuffledBots = [...botPlayers].sort(() => rng() - 0.5);
+    const phrasesUsedThisDay = new Set<string>();
     for (const chatBot of shuffledBots) {
       const role = secrets[chatBot.id]?.role ?? "aldeao";
       const prowChat = players.find((pl) => pl.id === chatBot.id);
@@ -788,8 +789,11 @@ export async function finalizeNight(roomCode: string, round: number) {
             : null,
         botKnowledge: kbByBotId.get(chatBot.id),
       });
-      const segmentsDn = getBotSegmentsForDayOpen(ctxBase, rng);
+      const segmentsDn = getBotSegmentsForDayOpen(ctxBase, rng, {
+        avoidPhrases: phrasesUsedThisDay,
+      });
       for (const seg of segmentsDn) {
+        phrasesUsedThisDay.add(normalizePhraseKey(seg.text));
         const chatPayload: Record<string, unknown> = {
           playerId: chatBot.id,
           name: chatBot.name,

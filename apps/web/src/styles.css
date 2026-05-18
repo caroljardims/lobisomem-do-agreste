@@ -199,8 +199,17 @@ input::placeholder {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   min-height: 28px;
   margin-bottom: 14px;
+}
+
+.top-bar--game {
+  justify-content: flex-start;
+}
+
+.top-bar--game .session-label {
+  margin-right: auto;
 }
 
 .top-bar-spacer {
@@ -216,8 +225,10 @@ input::placeholder {
   color: var(--texto-poeira);
   background: none;
   border: none;
-  padding: 6px 0;
+  padding: 6px 10px;
+  margin: 0 -6px;
   cursor: pointer;
+  flex-shrink: 0;
 }
 
 .back-link:hover {
@@ -693,6 +704,7 @@ input::placeholder {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  flex-shrink: 0;
   padding: 4px 10px;
   border-radius: 999px;
   background: rgba(212, 165, 116, 0.06);
@@ -1904,8 +1916,6 @@ input::placeholder {
   color: var(--texto-claro);
   margin: 0;
 }
-.jornal-cordel p::before { content: '"'; }
-.jornal-cordel p::after  { content: '"'; }
 
 .jornal-ctas {
   grid-area: ctas;

@@ -1,4 +1,3 @@
-import type { RoleId } from "folclore-game-engine";
 import type { BotContext, MessageType, Rng } from "./types.js";
 import { getCharacterConfig } from "./characterConfigs.js";
 import { getExclusivePhrases } from "./exclusivePhrases.js";
@@ -8,33 +7,12 @@ function randomFrom<T>(arr: T[], rng: Rng): T {
   return arr[Math.floor(rng() * arr.length)]!;
 }
 
-export function fillTemplates(phrase: string, ctx: BotContext): string {
-  const target = ctx.accuseTargetName ?? "alguém";
-  const victim = ctx.victim ?? "quem partiu";
-  const accuser = ctx.wasAccusedBy ?? "alguém";
-  return phrase
-    .replace(/\{event\}/g, ctx.dailyEvent)
-    .replace(/\{target\}/g, target)
-    .replace(/\{victim\}/g, victim)
-    .replace(/\{accuser\}/g, accuser);
+/** Chave para deduplicar frases já ditas na rodada (ignora maiúsculas/espaços). */
+export function normalizePhraseKey(phrase: string): string {
+  return phrase.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
-export function selectPhrase(type: MessageType, ctx: BotContext, rng: Rng): string {
-  const exclusive = getExclusivePhrases(ctx.role, type);
-  const generic = getGenericPhrases(type);
-  const genLen = generic.length;
-  const exLen = exclusive.length;
-
-  let raw: string;
-  if (exLen > 0 && genLen > 0) {
-    const bias = 3 / (3 + genLen / exLen);
-    raw = rng() < bias ? randomFrom(exclusive, rng) : randomFrom(generic, rng);
-  } else if (exLen > 0) {
-    raw = randomFrom(exclusive, rng);
-  } else {
-    raw = randomFrom(generic, rng);
-  }
-
+function phraseFromRaw(raw: string, type: MessageType, ctx: BotContext, rng: Rng): string {
   if (ctx.role === "geni" && type === "ACCUSE" && ctx.botoId && ctx.accuseTargetId === ctx.botoId) {
     raw = "Tem alguém aqui que não é o que parece. Eu sei reconhecer o tipo.";
   }
@@ -50,4 +28,56 @@ export function selectPhrase(type: MessageType, ctx: BotContext, rng: Rng): stri
   const cfg = getCharacterConfig(ctx.role);
   if (cfg.postProcess) phrase = cfg.postProcess(phrase, ctx, rng);
   return phrase;
+}
+
+function pickRawPhrase(type: MessageType, ctx: BotContext, rng: Rng): string {
+  const exclusive = getExclusivePhrases(ctx.role, type);
+  const generic = getGenericPhrases(type);
+  const genLen = generic.length;
+  const exLen = exclusive.length;
+
+  if (exLen > 0 && genLen > 0) {
+    const bias = 3 / (3 + genLen / exLen);
+    return rng() < bias ? randomFrom(exclusive, rng) : randomFrom(generic, rng);
+  }
+  if (exLen > 0) return randomFrom(exclusive, rng);
+  return randomFrom(generic, rng);
+}
+
+export function fillTemplates(phrase: string, ctx: BotContext): string {
+  const target = ctx.accuseTargetName ?? "alguém";
+  const victim = ctx.victim ?? "quem partiu";
+  const accuser = ctx.wasAccusedBy ?? "alguém";
+  return phrase
+    .replace(/\{event\}/g, ctx.dailyEvent)
+    .replace(/\{target\}/g, target)
+    .replace(/\{victim\}/g, victim)
+    .replace(/\{accuser\}/g, accuser);
+}
+
+export function selectPhrase(
+  type: MessageType,
+  ctx: BotContext,
+  rng: Rng,
+  avoid?: ReadonlySet<string>,
+): string {
+  if (!avoid?.size) {
+    return phraseFromRaw(pickRawPhrase(type, ctx, rng), type, ctx, rng);
+  }
+
+  for (let attempt = 0; attempt < 18; attempt++) {
+    const phrase = phraseFromRaw(pickRawPhrase(type, ctx, rng), type, ctx, rng);
+    if (!avoid.has(normalizePhraseKey(phrase))) return phrase;
+  }
+
+  const exclusive = getExclusivePhrases(ctx.role, type);
+  const generic = getGenericPhrases(type);
+  const pool = [...exclusive, ...generic];
+  const shuffled = [...pool].sort(() => rng() - 0.5);
+  for (const raw of shuffled) {
+    const phrase = phraseFromRaw(raw, type, ctx, rng);
+    if (!avoid.has(normalizePhraseKey(phrase))) return phrase;
+  }
+
+  return phraseFromRaw(pickRawPhrase(type, ctx, rng), type, ctx, rng);
 }

@@ -1147,7 +1147,7 @@ export function App() {
                   : ""
         }`}
       >
-      <div className="top-bar">
+      <div className="top-bar top-bar--game">
         <button type="button" className="back-link" onClick={leave}>
           ← sair
         </button>
@@ -1174,7 +1174,6 @@ export function App() {
           <button
             type="button"
             className="back-link noite-help-btn"
-            style={{ marginLeft: "auto" }}
             aria-label="Reler carta do personagem"
             onClick={() => {
               setLoreSheetFolhetoOpen(true);
@@ -1187,7 +1186,6 @@ export function App() {
           <button
             type="button"
             className="back-link"
-            style={{ marginLeft: "auto" }}
             onClick={() => {
               navigateAccount("ranking");
             }}

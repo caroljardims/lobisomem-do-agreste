@@ -2,7 +2,12 @@ import type { BotChatSegment, BotContext, ChatSemanticKindTagged, MessageType, R
 import { evaluateTree, getBehaviorRoot } from "./behaviorTree.js";
 import { getCharacterConfig } from "./characterConfigs.js";
 import { prioritizeByThreat, playerFightsForTownTeam } from "../botKnowledge/selectVoteTarget.js";
-import { selectPhrase } from "./phraseSelection.js";
+import { normalizePhraseKey, selectPhrase } from "./phraseSelection.js";
+
+export type BotPhraseAvoidOptions = {
+  /** Frases já usadas nesta rodada (outros bots ou mensagens anteriores). */
+  avoidPhrases?: ReadonlySet<string>;
+};
 
 function remapRoleMessageType(role: BotContext["role"], t: MessageType): MessageType {
   if (role === "saci" && t === "DEFEND") return "DEFLECT";
@@ -164,35 +169,56 @@ function segmentSemantics(
   return {};
 }
 
-export function getBotMessage(ctx: BotContext, rng: Rng): string {
+export function getBotMessage(ctx: BotContext, rng: Rng, opts?: BotPhraseAvoidOptions): string {
   const t = runBotBehavior(ctx, rng);
   if (t == null) return "Calma, gente. Vamos com calma.";
   const withTarget = pickAccuseTarget(ctx, t, rng);
-  return selectPhrase(t, withTarget, rng);
+  return selectPhrase(t, withTarget, rng, opts?.avoidPhrases);
 }
 
 /** Compat: só texto por mensagem (sem marcação semântica). */
-export function getBotMessagesForDayOpen(ctx: BotContext, rng: Rng): string[] {
-  return getBotSegmentsForDayOpen(ctx, rng).map((s) => s.text);
+export function getBotMessagesForDayOpen(
+  ctx: BotContext,
+  rng: Rng,
+  opts?: BotPhraseAvoidOptions,
+): string[] {
+  return getBotSegmentsForDayOpen(ctx, rng, opts).map((s) => s.text);
 }
 
-export function getBotSegmentsForDayOpen(ctx: BotContext, rng: Rng): BotChatSegment[] {
+export function getBotSegmentsForDayOpen(
+  ctx: BotContext,
+  rng: Rng,
+  opts?: BotPhraseAvoidOptions,
+): BotChatSegment[] {
   const cfg = getCharacterConfig(ctx.role);
   if (rng() < cfg.silentRate) return [];
   const n = Math.max(1, Math.min(cfg.maxMessages, 1 + Math.floor(rng() * cfg.maxMessages)));
   const out: BotChatSegment[] = [];
+  const avoid = new Set(opts?.avoidPhrases ?? []);
+  const usedTypes: MessageType[] = [];
+
   for (let i = 0; i < n; i++) {
-    const pieceCtx = { ...ctx, messageIndex: i };
-    let t = runBotBehavior(pieceCtx, rng);
-    if (t == null) continue;
-    t = remapRoleMessageType(ctx.role, t);
-    const withTarget = pickAccuseTarget(pieceCtx, t, rng);
-    const phrase = selectPhrase(t, withTarget, rng);
-    const { kind, target } = segmentSemantics(t, withTarget);
-    out.push({
-      text: phrase,
-      ...(kind ? { semanticKind: kind, semanticTargetId: target ?? null } : {}),
-    });
+    const excludeTypes = [...(ctx.excludeTypes ?? []), ...usedTypes];
+    const pieceCtx = { ...ctx, messageIndex: i, excludeTypes };
+
+    for (let attempt = 0; attempt < 10; attempt++) {
+      let t = runBotBehavior(pieceCtx, rng);
+      if (t == null) break;
+      t = remapRoleMessageType(ctx.role, t);
+      const withTarget = pickAccuseTarget(pieceCtx, t, rng);
+      const phrase = selectPhrase(t, withTarget, rng, avoid);
+      const key = normalizePhraseKey(phrase);
+      if (avoid.has(key)) continue;
+
+      avoid.add(key);
+      usedTypes.push(t);
+      const { kind, target } = segmentSemantics(t, withTarget);
+      out.push({
+        text: phrase,
+        ...(kind ? { semanticKind: kind, semanticTargetId: target ?? null } : {}),
+      });
+      break;
+    }
   }
   return out;
 }
